@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import pkgutil
 import sqlite3  # <-- Importa sqlite3 aquí
+from procesamiento.db_sqlite import guardar_paso1_sqlite  # Importar función de guardado
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -386,6 +387,44 @@ class RenovacionValidator:
             
             # 🔧 Normalizar nombres de columna a minúsculas
             df_resultado.columns = [col.lower() for col in df_resultado.columns]
+            
+            # 💾 INSERTAR REGISTROS A LA BASE DE DATOS - Solo registros correctos
+            try:
+                # Filtrar solo registros correctos
+                df_correctos = df_resultado[df_resultado['estado'] == 'Correcto'].copy()
+                
+                if not df_correctos.empty:
+                    # Normalizar nombres de columnas para la BD
+                    df_correctos_bd = df_correctos.rename(columns={
+                        'wo': 'wo',
+                        'mant': 'mant', 
+                        'fecha': 'fecha',
+                        'cliente': 'cliente',
+                        'referencia': 'referencia',
+                        'tipo': 'tipo',
+                        'precio': 'precio',
+                        'cantidad': 'cantidad',
+                        'cuota': 'cuota',
+                        'tecnico': 'tecnico',
+                        'pago': 'pago',
+                        'cant_antiguo': 'cant_antiguo',
+                        'cant_nuevo': 'cant_nuevo', 
+                        'cant_total': 'cant_total',
+                        'estado': 'estado',
+                        'observaciones': 'observaciones',
+                        'rpa': 'rpa'
+                    })
+                    
+                    # Guardar en SQLite
+                    guardar_paso1_sqlite(df_correctos_bd)
+                    logger.info(f"✅ {len(df_correctos)} registros correctos guardados en SQLite")
+                else:
+                    logger.info("⚠️ No hay registros correctos para guardar en SQLite")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error al guardar registros en SQLite: {str(e)}")
+                # No interrumpir el flujo principal, solo registrar el error
+            
             mensaje_final = (
                 f"Validación completada exitosamente. "
                 f"Procesados: {stats['total_registros']} registros, "

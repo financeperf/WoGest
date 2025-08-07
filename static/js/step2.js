@@ -3,24 +3,7 @@
 // Basado en step1.js con todas las funcionalidades implementadas
 // ===================================================================
 
-// Cargar script de depuración solo en desarrollo (solo funcionará si el archivo existe)
-// No se ejecutará automáticamente, requiere activación manual con: window.DEBUG_MODE_STEP2 = true;
-(function() {
-  // Verificar si estamos en desarrollo (esto puede ajustarse según tu entorno)
-  const isDevelopment = 
-    window.location.hostname === 'localhost' || 
-    window.location.hostname === '127.0.0.1' ||
-    window.location.hostname.includes('.local');
-  
-  if (isDevelopment) {
-    const debugScript = document.createElement('script');
-    debugScript.src = '/static/js/debug/debugStep2.js';
-    debugScript.async = true;
-    debugScript.onload = () => console.log("🛠️ Script de debug Step 2 cargado");
-    debugScript.onerror = () => console.log("⚠️ No se pudo cargar el script de debug Step 2");
-    document.body.appendChild(debugScript);
-  }
-})();
+import { exportarExcel } from './export-utils.js';
 
 // Estado global de la aplicación para el paso 2
 window.appStateStep2 = window.appStateStep2 || {
@@ -29,12 +12,12 @@ window.appStateStep2 = window.appStateStep2 || {
   pywebviewReady: false,
   isProcessing: false,  // Bandera para evitar múltiples ejecuciones
   filtrosActivos: {
-    contrato: '',
-    n_wo: '',
-    n_wo_alt: '',
+    CONTRATO: '',
+    N_WO: '',
+    N_WO_alt: '',
     orden: '',
-    cliente: '',
-    cerrado: '',
+    CLIENTE: '',
+    CERRADO: '',
     es_cerrado: ''
   },
   paginacion: {
@@ -66,6 +49,11 @@ function initializeStep2App() {
   
   // Configurar botones
   setupStep2Buttons();
+  
+  // Conectar botón exportar Excel
+  document.getElementById('btn-exportar-excel')?.addEventListener('click', () => {
+    exportarExcel({ detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
+  });
   
   // Verificar pywebview
   checkStep2PywebviewReady();
@@ -322,9 +310,9 @@ function clearStep2File() {
 
   // Resetear filtros activos
   window.appStateStep2.filtrosActivos = {
-    contrato: '',
-    n_wo: '',
-    contrato: '',
+    CONTRATO: '',
+    N_WO: '',
+    CONTRATO: '',
     es_cerrado: ''
   };
 
@@ -725,8 +713,8 @@ function mostrarResultadosStep2(resultado) {
 
 function configurarFiltrosStep2() {
   const mapeo = {
-    'filtro-wo-step2': 'n_wo',
-    'filtro-contrato-step2': 'contrato',
+    'filtro-wo-step2': 'N_WO',
+    'filtro-contrato-step2': 'CONTRATO',
     'filtro-estado-step2': 'es_cerrado'
   };
 
@@ -745,8 +733,8 @@ function configurarFiltrosStep2() {
   if (limpiar) {
     limpiar.addEventListener('click', () => {
       window.appStateStep2.filtrosActivos = {
-        n_wo: '',
-        contrato: '',
+        N_WO: '',
+        CONTRATO: '',
         es_cerrado: ''
       };
       Object.keys(mapeo).forEach(id => {
@@ -759,6 +747,65 @@ function configurarFiltrosStep2() {
       aplicarFiltrosStep2();
     });
   }
+}
+
+function aplicarFiltrosStep2() {
+  if (!window.appStateStep2.validationResult || !window.appStateStep2.validationResult.detalle) {
+    console.warn("❌ No hay datos para filtrar");
+    return;
+  }
+
+  const original = window.appStateStep2.validationResult.detalle;
+  const filtros = window.appStateStep2.filtrosActivos;
+
+  console.log("🔍 Aplicando filtros:", filtros);
+  console.log("📊 Datos originales:", original.length, "registros");
+
+  const filtrados = original.filter(fila => {
+    // Filtro por N_WO (número de work order)
+    if (filtros.N_WO && filtros.N_WO.trim() !== '') {
+      const nWo = String(fila.N_WO || '').toLowerCase();
+      const filtroNWo = String(filtros.N_WO).toLowerCase();
+      if (!nWo.includes(filtroNWo)) {
+        return false;
+      }
+    }
+
+    // Filtro por CONTRATO
+    if (filtros.CONTRATO && filtros.CONTRATO.trim() !== '') {
+      const contrato = String(fila.CONTRATO || '').toLowerCase();
+      const filtroContrato = String(filtros.CONTRATO).toLowerCase();
+      if (!contrato.includes(filtroContrato)) {
+        return false;
+      }
+    }
+
+    // Filtro por es_cerrado (estado)
+    if (filtros.es_cerrado && filtros.es_cerrado.trim() !== '') {
+      if (filtros.es_cerrado === 'SI' && fila.es_cerrado !== 'SI') {
+        return false;
+      }
+      if (filtros.es_cerrado === 'NO' && fila.es_cerrado !== 'NO') {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  console.log("✅ Datos filtrados:", filtrados.length, "registros");
+
+  // Actualizar estado
+  window.appStateStep2.datosFiltrados = filtrados;
+  window.appStateStep2.paginacion.totalRegistros = filtrados.length;
+  window.appStateStep2.paginacion.totalPaginas = Math.ceil(filtrados.length / window.appStateStep2.paginacion.registrosPorPagina);
+  window.appStateStep2.paginacion.paginaActual = 1; // Resetear a primera página
+
+  // Mostrar página actual
+  mostrarPaginaActual();
+  
+  // Actualizar contador de filtros
+  actualizarContadorFiltrosStep2();
 }
 
 
@@ -910,7 +957,7 @@ function generarTablaHtml(datos) {
   const columnasDisponibles = Object.keys(datos[0]);
   
   // Definir columnas principales y su orden preferido EXACTO para WOQ
-  const columnasPreferidas = ['contrato', 'n_wo', 'n_wo_alt', 'orden', 'cliente', 'cerrado', 'es_cerrado', 'estado'];
+  const columnasPreferidas = ['CONTRATO', 'N_WO', 'N°_WO', 'CLIENTE', 'CERRADO', 'es_cerrado', 'ORDEN_CONTRATO'];
   
   // Crear lista de columnas ordenadas: primero las preferidas, luego las adicionales
   const columnasOrdenadas = [];
@@ -941,10 +988,11 @@ function generarTablaHtml(datos) {
     // Nombres de columnas más legibles para mostrar
     let nombreColumna = col.toUpperCase();
     switch(col) {
-      case 'n_wo': nombreColumna = 'N° WO'; break;
-      case 'n_wo_alt': nombreColumna = 'N WO'; break;
+      case 'N_WO': nombreColumna = 'N° WO'; break;
+      case 'N°_WO': nombreColumna = 'N° WO ORIG'; break;
       case 'es_cerrado': nombreColumna = 'ESTADO CIERRE'; break;
-      default: nombreColumna = col.toUpperCase();
+      case 'ORDEN_CONTRATO': nombreColumna = 'ORDEN'; break;
+      default: nombreColumna = col.replace(/_/g, ' ');
     }
     html += `<th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">${nombreColumna}</th>`;
   });
@@ -970,7 +1018,7 @@ function generarTablaHtml(datos) {
       let atributoFiltro = '';
       
       // Agregar atributos de filtro para columnas específicas
-      if (['contrato', 'n_wo', 'n_wo_alt', 'cliente', 'cerrado', 'es_cerrado'].includes(col)) {
+      if (['CONTRATO', 'N_WO', 'N°_WO', 'CLIENTE', 'CERRADO', 'es_cerrado'].includes(col)) {
         atributoFiltro = `data-filtro="${col}"`;
       }
       
@@ -1034,11 +1082,11 @@ function formatearValorWoq(valor, columna) {
   
   // Formateo específico según el tipo de columna
   switch(columna) {
-    case 'contrato':
-    case 'n_wo':
-    case 'n_wo_alt':
+    case 'CONTRATO':
+    case 'N_WO':
+    case 'N°_WO':
       return `<span class="font-semibold">${valor}</span>`;
-    case 'cerrado':
+    case 'CERRADO':
       return valor ? '<span class="badge badge-success">SI</span>' : '<span class="badge badge-warning">NO</span>';
     default:
       return String(valor);
@@ -1302,5 +1350,28 @@ function verDetalleWoq(index) {
       </thead>
       <tbody>`;
 
+      for (const clave in registro) {
+        contenidoHtml += `
+          <tr>
+            <td class="py-2 font-medium">${clave}</td>
+            <td class="py-2">${registro[clave]}</td>
+          </tr>
+        `;
+      }
 
+      contenidoHtml += `
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  mostrarModal({
+    title: "Detalle del registro WOQ",
+    content: contenidoHtml,
+    buttons: [{ text: "Cerrar", action: "close" }]
+  });
+}
+
+// Iniciar app al cargar
+document.addEventListener("DOMContentLoaded", initializeStep2App);
 

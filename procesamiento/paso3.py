@@ -576,3 +576,5 @@ def ejecutar_paso3_y_exportar():
     else:
         print(f"⚠️ Cruce fallido: {resultado.get('message')}")
 
+<script type="module" src="/static/js/step1.js"></script>
+

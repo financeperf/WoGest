@@ -1,5 +1,3 @@
-import { exportarExcel } from './export-utils.js';
-
 // Función para formatear valores según su tipo
 function formatearValor(valor, columna) {
   // Manejo especial para PRECIO y CUOTA: mostrar 0 en lugar de N/A
@@ -481,11 +479,7 @@ function initializeApp() {
 
   const btnExportar = document.getElementById('btn-exportar-excel');
   if (btnExportar) {
-    btnExportar.addEventListener('click', handleExportarExcelPaso1);
-  }
-
-  const btnReporte = document.getElementById('btn-generar-reporte');
-  if (btnReporte) {
+    btnExportar.addEventListener('click', exportarExcel);
   }
 
   console.log("✅ App inicializada correctamente. Esperando pywebview...");
@@ -530,6 +524,123 @@ if (document.readyState === 'loading') {
   initializeApp();
 }
 
+function validarCarga(event) {
+  console.log("🔍 Iniciando validarCarga()");
+  console.log("🔍 pywebviewReady:", window.appState.pywebviewReady);
+  console.log("🔍 window.pywebview:", !!window.pywebview);
+  console.log("🔍 window.pywebview.api:", !!window.pywebview?.api);
+
+  const archivo = appState.selectedFile || document.getElementById("archivo1").files[0];
+
+  console.log("🔍 Archivo seleccionado:", archivo?.name);
+  const ejecutadoPorUsuario = event?.isTrusted === true;
+  const archivoSeleccionado = !!archivo && archivo.name !== "";
+  if (!ejecutadoPorUsuario && !archivoSeleccionado) {
+    console.warn("⛔ validarCarga() fue llamada automáticamente sin interacción ni archivo válido. Cancelando.");
+    return;
+  }
+  if (!archivoSeleccionado) {
+    alert("Debes seleccionar un archivo .xlsx");
+    return;
+  }
+  if (!window.pywebview || !window.pywebview.api) {
+    console.error("❌ pywebview no está disponible");
+    alert("❌ Error: La conexión con Python no está disponible");
+    return;
+  }
+  console.log("📖 Leyendo archivo...");
+  const reader = new FileReader();
+
+  reader.onload = function () {
+    console.log("📖 Archivo leído correctamente");
+    const base64Data = reader.result.split(',')[1];
+    console.log("📤 Base64 generado, longitud:", base64Data.length);
+    console.log("📤 Enviando archivo a Python:", archivo.name);
+
+    updateProcessStatus('Validando archivo...', 'validating');
+    window.pywebview.api.validar_archivo_workorder({
+      nombre: archivo.name,
+      base64: base64Data
+    }).then(resp => {
+      console.log("📥 Respuesta de Python recibida:", resp);
+      const loading = document.getElementById('loading');
+      if (loading) loading.classList.add('hidden');
+      const preview = document.getElementById("preview");
+      if (preview) {
+        preview.classList.remove("hidden");
+        if (resp.success) {
+          preview.innerHTML = `<p class="text-green-700 font-medium">✅ ${resp.message}</p>`;
+          updateProcessStatus('Archivo validado correctamente', 'success');
+
+          window.appState.validationResult = resp;
+
+          mostrarTablaResultados(resp);
+
+          const btn = document.getElementById("btn-siguiente");
+          if (btn) {
+            btn.disabled = false;
+            btn.classList.remove("disabled");
+          }
+        } else {
+          preview.innerHTML = `<p class="text-red-600 font-medium">❌ ${resp.message}</p>`;
+          updateProcessStatus('Error en validación', 'error');
+        }
+      }
+    }).catch(error => {
+      console.error("❌ ERROR al llamar a pywebview.api:", error);
+
+      const loading = document.getElementById('loading');
+      if (loading) loading.classList.add('hidden');
+
+      alert("❌ Error al validar el archivo: " + error.message);
+      updateProcessStatus('Error al validar archivo', 'error');
+    });
+  };
+  reader.onerror = function() {
+    console.error("❌ Error al leer el archivo");
+    alert("❌ Error al leer el archivo");
+  };
+  reader.readAsDataURL(archivo);
+}
+
+function mostrarTablaResultados(resultado) {
+  console.log("📊 Mostrando tabla de resultados:", resultado);
+
+  const contenedor = document.getElementById('validation-content');
+  if (!contenedor) return;
+
+  contenedor.classList.remove('hidden');
+
+  const detalle = resultado.detalle || [];
+  const estadisticas = resultado.estadisticas || {};
+
+  window.appState.datosFiltrados = [...detalle];
+  window.appState.paginacion.totalRegistros = detalle.length;
+  window.appState.paginacion.totalPaginas = Math.ceil(detalle.length / window.appState.paginacion.registrosPorPagina);
+
+  actualizarEstadisticas(estadisticas);
+
+  configurarFiltros();
+
+  mostrarPaginaActual();
+
+  mostrarControlesPaginacion();
+
+  actualizarContadorFiltros();
+}
+
+function mostrarPaginaActual() {
+  const datosPagina = obtenerDatosPaginaActual();
+  const tablaHtml = generarTablaHtml(datosPagina);
+
+  const tablaContainer = document.getElementById('tabla-resultados');
+  if (tablaContainer) {
+    tablaContainer.innerHTML = tablaHtml;
+  }
+}
+
+function obtenerDatosPaginaActual() {
+  const inicio = (window.appState.paginacion.paginaActual - 1) * window.appState.paginacion.registrosPorPagina;
   const fin = inicio + window.appState.paginacion.registrosPorPagina;
   return window.appState.datosFiltrados.slice(inicio, fin);
 }
@@ -859,7 +970,7 @@ function actualizarEstadisticas(stats) {
     'stat-total': stats.total || 0,
     'stat-correct': stats.correctos || 0,
     'stat-incorrect': stats.incorrectos || 0,
-    'stat-success-rate': stats.total > 0 ? Math.round((stats.correctos / stats.total) + 100) + '%' : '0%'
+    'stat-success-rate': stats.total > 0 ? Math.round((stats.correctos / stats.total) * 100) + '%' : '0%'
   };
 
   Object.entries(statElements).forEach(([id, valor]) => {
@@ -880,532 +991,25 @@ function actualizarEstadisticas(stats) {
   }
 }
 
-// Reemplazar función de exportación por la centralizada
-function handleExportarExcelPaso1() {
+// Función para exportar Excel usando la función centralizada de export-utils.js
+async function exportarExcel() {
   if (!window.appState.validationResult?.detalle) {
     alert('❌ No hay datos para exportar');
     return;
   }
-  exportarExcel(
-    window.appState.validationResult,
-    window.appState.selectedFile?.name || 'N/A'
-  );
-}
-
-// Modal para seleccionar opciones de exportación
-function mostrarOpcionesExportacion() {
-  return new Promise((resolve) => {
-    // Eliminar modal existente si existe
-    const modalExistente = document.getElementById('modal-opciones-exportacion');
-    if (modalExistente) {
-      modalExistente.remove();
-    }
-
-    const modal = document.createElement('div');
-    modal.id = 'modal-opciones-exportacion';
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-    modal.innerHTML = `
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div class="flex items-center mb-4">
-          <div class="bg-blue-100 rounded-full p-2 mr-3">
-            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </div>
-          <h3 class="text-lg font-semibold text-gray-900">Exportar Excel</h3>
-        </div>
-        <p class="text-gray-600 mb-4">¿Dónde deseas guardar el archivo?</p>
-        
-        <div class="space-y-3">
-          <button id="btn-descargas-modal" class="w-full bg-green-600 text-white px-4 py-3 rounded hover:bg-green-700 flex items-center justify-center">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
-            </svg>
-            📥 Carpeta de Descargas
-          </button>
-          
-          <button id="btn-personalizada-modal" class="w-full bg-blue-600 text-white px-4 py-3 rounded hover:bg-blue-700 flex items-center justify-center">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-            </svg>
-            📂 Elegir Carpeta
-          </button>
-        </div>
-        
-        <button id="btn-cancelar-modal" class="w-full mt-3 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-          Cancelar
-        </button>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    // Event listeners usando IDs únicos
-    document.getElementById('btn-descargas-modal').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve('descargas');
-    });
-
-    document.getElementById('btn-personalizada-modal').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve('personalizada');
-    });
-
-    document.getElementById('btn-cancelar-modal').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve(null);
-    });
-
-    // Cerrar con ESC
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') {
-        if (document.body.contains(modal)) {
-          document.body.removeChild(modal);
-        }
-        document.removeEventListener('keydown', handleEsc);
-        resolve(null);
-      }
-    };
-    document.addEventListener('keydown', handleEsc);
-  });
-}
-
-// Modal de éxito de exportación
-function mostrarModalExitoExportacion(resultado) {
-  // Eliminar modal existente si existe
-  const modalExistente = document.getElementById('modal-exito-exportacion');
-  if (modalExistente) {
-    modalExistente.remove();
-  }
-
-  const modal = document.createElement('div');
-  modal.id = 'modal-exito-exportacion';
-  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-  modal.innerHTML = `
-    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-      <div class="flex items-center mb-4">
-        <div class="bg-green-100 rounded-full p-2 mr-3">
-          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900">¡Exportación Exitosa!</h3>
-      </div>
-      
-      <p class="text-gray-600 mb-4">${resultado.message}</p>
-      
-      <div class="bg-gray-50 p-3 rounded-lg mb-4">
-        <p class="text-sm text-gray-700 font-medium mb-1">📁 Ubicación:</p>
-        <p class="text-xs text-gray-600 break-all">${resultado.archivo}</p>
-      </div>
-      
-      <div class="flex gap-2">
-        <button id="btn-abrir-carpeta-exito" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center justify-center">
-          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-          </svg>
-          Abrir Carpeta
-        </button>
-        <button id="btn-cerrar-modal-exito" class="flex-1 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-          Cerrar
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  // Event listeners con IDs únicos
-  document.getElementById('btn-abrir-carpeta-exito').addEventListener('click', async () => {
-    try {
-      if (window.pywebview && window.pywebview.api) {
-        console.log("Abriendo carpeta:", resultado.archivo);
-        const resp = await window.pywebview.api.abrir_carpeta_archivo(resultado.archivo);
-        if (!resp.success) {
-          console.error("Error al abrir carpeta:", resp.message);
-          alert("❌ Error al abrir carpeta: " + resp.message);
-        }
-      }
-    } catch (error) {
-      console.error("Error al abrir carpeta:", error);
-      alert("❌ Error al abrir carpeta: " + error.message);
-    }
-    
-    if (document.body.contains(modal)) {
-      document.body.removeChild(modal);
-    }
-  });
-
-  document.getElementById('btn-cerrar-modal-exito').addEventListener('click', () => {
-    if (document.body.contains(modal)) {
-      document.body.removeChild(modal);
-    }
-  });
-
-  // Cerrar con ESC
-  const handleEsc = (e) => {
-    if (e.key === 'Escape') {
-      if (document.body.contains(modal)) {
-        document.body.removeChild(modal);
-      }
-      document.removeEventListener('keydown', handleEsc);
-    }
-  };
-  document.addEventListener('keydown', handleEsc);
-}
-
-// Nueva función generarReporte() usando el backend
-async function generarReporte() {
-  console.log("📄 Iniciando generación de reporte con backend");
   
-  if (!window.appState.validationResult) {
-    alert("❌ No hay datos para generar reporte");
-    return;
-  }
-
-  // Validar que pywebview está disponible
-  if (!window.pywebview || !window.pywebview.api) {
-    alert("❌ Función de generación de reporte no disponible");
-    return;
-  }
-
   try {
-    // Mostrar opciones al usuario (igual que Excel)
-    const opcion = await mostrarOpcionesReporte();
+    // Importar dinámicamente la función de export-utils.js
+    const { exportarExcel: exportarExcelUtils } = await import('./export-utils.js');
     
-    if (!opcion) {
-      console.log("Usuario canceló la generación de reporte");
-      return;
-    }
-
-    let carpetaDestino = null;
-    
-    // Si eligió carpeta personalizada, abrir diálogo
-    if (opcion === 'personalizada') {
-      const seleccion = await window.pywebview.api.seleccionar_directorio_exportacion();
-      
-      if (!seleccion.success) {
-        if (seleccion.message !== "Selección cancelada") {
-          alert("❌ " + seleccion.message);
-        }
-        return;
-      }
-      
-      carpetaDestino = seleccion.ruta;
-      console.log("Carpeta seleccionada para reporte:", carpetaDestino);
-    } else {
-      console.log("Usuario eligió carpeta de Descargas para reporte");
-    }
-
-    console.log("Generando reporte...");
-    
-    // Realizar generación del reporte
-    const resultado = await window.pywebview.api.generar_reporte_con_ruta({
-      datos: window.appState.validationResult,
-      carpeta_destino: carpetaDestino,
-      nombre_archivo_original: window.appState.selectedFile?.name || "N/A"
-    });
-
-    console.log("Resultado del backend para reporte:", resultado);
-
-    if (resultado.success) {
-      mostrarModalExitoReporte(resultado);
-    } else {
-      alert("❌ Error al generar reporte: " + resultado.message);
-    }
-
+    // Usar la función centralizada de exportación  
+    await exportarExcelUtils(
+      window.appState.validationResult,
+      window.appState.selectedFile?.name || 'N/A'
+    );
   } catch (error) {
-    console.error("❌ Error al generar reporte:", error);
-    alert("❌ Error inesperado al generar reporte: " + error.message);
+    console.error('Error al importar export-utils.js:', error);
+    alert('❌ Error al cargar la función de exportación');
   }
 }
 
-// Modal para opciones de reporte
-function mostrarOpcionesReporte() {
-  return new Promise((resolve) => {
-    const modalExistente = document.getElementById('modal-opciones-reporte');
-    if (modalExistente) {
-      modalExistente.remove();
-    }
-
-    const modal = document.createElement('div');
-    modal.id = 'modal-opciones-reporte';
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-    modal.innerHTML = `
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div class="flex items-center mb-4">
-          <div class="bg-purple-100 rounded-full p-2 mr-3">
-            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </div>
-          <h3 class="text-lg font-semibold text-gray-900">Generar Reporte</h3>
-        </div>
-        <p class="text-gray-600 mb-4">¿Dónde deseas guardar el reporte?</p>
-        
-        <div class="space-y-3">
-          <button id="btn-descargas-reporte" class="w-full bg-green-600 text-white px-4 py-3 rounded hover:bg-green-700 flex items-center justify-center">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
-            </svg>
-            📥 Carpeta de Descargas
-          </button>
-          
-          <button id="btn-personalizada-reporte" class="w-full bg-purple-600 text-white px-4 py-3 rounded hover:bg-purple-700 flex items-center justify-center">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-            </svg>
-            📂 Elegir Carpeta
-          </button>
-        </div>
-        
-        <button id="btn-cancelar-reporte" class="w-full mt-3 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-          Cancelar
-        </button>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    document.getElementById('btn-descargas-reporte').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve('descargas');
-    });
-
-    document.getElementById('btn-personalizada-reporte').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve('personalizada');
-    });
-
-    document.getElementById('btn-cancelar-reporte').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve(null);
-    });
-
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') {
-        if (document.body.contains(modal)) {
-          document.body.removeChild(modal);
-        }
-        document.removeEventListener('keydown', handleEsc);
-        resolve(null);
-      }
-    };
-    document.addEventListener('keydown', handleEsc);
-  });
-}
-
-// Modal de éxito para reporte
-function mostrarModalExitoReporte(resultado) {
-  const modalExistente = document.getElementById('modal-exito-reporte');
-  if (modalExistente) {
-    modalExistente.remove();
-  }
-
-  const modal = document.createElement('div');
-  modal.id = 'modal-exito-reporte';
-  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-  modal.innerHTML = `
-    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-      <div class="flex items-center mb-4">
-        <div class="bg-green-100 rounded-full p-2 mr-3">
-          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900">¡Reporte Generado!</h3>
-      </div>
-      
-      <p class="text-gray-600 mb-4">${resultado.message}</p>
-      
-      <div class="bg-gray-50 p-3 rounded-lg mb-4">
-        <p class="text-sm text-gray-700 font-medium mb-1">📁 Ubicación:</p>
-        <p class="text-xs text-gray-600 break-all">${resultado.archivo}</p>
-      </div>
-      
-      <div class="flex gap-2">
-        <button id="btn-abrir-carpeta-reporte" class="flex-1 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 flex items-center justify-center">
-          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-          </svg>
-          Abrir Carpeta
-        </button>
-        <button id="btn-cerrar-modal-reporte" class="flex-1 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-          Cerrar
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  document.getElementById('btn-abrir-carpeta-reporte').addEventListener('click', async () => {
-    try {
-      if (window.pywebview && window.pywebview.api) {
-        console.log("Abriendo carpeta del reporte:", resultado.archivo);
-        const resp = await window.pywebview.api.abrir_carpeta_archivo(resultado.archivo);
-        if (!resp.success) {
-          console.error("Error al abrir carpeta:", resp.message);
-          alert("❌ Error al abrir carpeta: " + resp.message);
-        }
-      }
-    } catch (error) {
-      console.error("Error al abrir carpeta:", error);
-      alert("❌ Error al abrir carpeta: " + error.message);
-    }
-    
-    if (document.body.contains(modal)) {
-      document.body.removeChild(modal);
-    }
-  });
-
-  document.getElementById('btn-cerrar-modal-reporte').addEventListener('click', () => {
-    if (document.body.contains(modal)) {
-      document.body.removeChild(modal);
-    }
-  });
-
-  const handleEsc = (e) => {
-    if (e.key === 'Escape') {
-      if (document.body.contains(modal)) {
-        document.body.removeChild(modal);
-      }
-      document.removeEventListener('keydown', handleEsc);
-    }
-  };
-  document.addEventListener('keydown', handleEsc);
-}
-
-// Modal para opciones de reporte (similar al de Excel)
-function mostrarOpcionesReporte() {
-  return new Promise((resolve) => {
-    const modalExistente = document.getElementById('modal-opciones-reporte');
-    if (modalExistente) {
-      modalExistente.remove();
-    }
-
-    const modal = document.createElement('div');
-    modal.id = 'modal-opciones-reporte';
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-    modal.innerHTML = `
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div class="flex items-center mb-4">
-          <div class="bg-purple-100 rounded-full p-2 mr-3">
-            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </div>
-          <h3 class="text-lg font-semibold text-gray-900">Generar Reporte</h3>
-        </div>
-        <p class="text-gray-600 mb-4">¿Dónde deseas guardar el reporte?</p>
-        
-        <div class="space-y-3">
-          <button id="btn-descargas-reporte" class="w-full bg-green-600 text-white px-4 py-3 rounded hover:bg-green-700 flex items-center justify-center">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
-            </svg>
-            📥 Carpeta de Descargas
-          </button>
-          
-          <button id="btn-personalizada-reporte" class="w-full bg-purple-600 text-white px-4 py-3 rounded hover:bg-purple-700 flex items-center justify-center">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-            </svg>
-            📂 Elegir Carpeta
-          </button>
-        </div>
-        
-        <button id="btn-cancelar-reporte" class="w-full mt-3 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-          Cancelar
-        </button>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    document.getElementById('btn-descargas-reporte').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve('descargas');
-    });
-
-    document.getElementById('btn-personalizada-reporte').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve('personalizada');
-    });
-
-    document.getElementById('btn-cancelar-reporte').addEventListener('click', () => {
-      document.body.removeChild(modal);
-      resolve(null);
-    });
-
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') {
-        if (document.body.contains(modal)) {
-          document.body.removeChild(modal);
-        }
-        document.removeEventListener('keydown', handleEsc);
-        resolve(null);
-      }
-    };
-    document.addEventListener('keydown', handleEsc);
-  });
-}
-
-// Modal de éxito para reporte - VERSIÓN CORREGIDA
-function mostrarModalExitoReporte(resultado) {
-  const modalExistente = document.getElementById('modal-exito-reporte');
-  if (modalExistente) {
-    modalExistente.remove();
-  }
-
-  const modal = document.createElement('div');
-  modal.id = 'modal-exito-reporte';
-  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-  modal.innerHTML = `
-    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-      <div class="flex items-center mb-4">
-        <div class="bg-green-100 rounded-full p-2 mr-3">
-          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900">¡Reporte Generado!</h3>
-      </div>
-      
-      <p class="text-gray-600 mb-4">${resultado.message}</p>
-      
-      <div class="bg-gray-50 p-3 rounded-lg mb-4">
-        <p class="text-sm text-gray-700 font-medium mb-1">📁 Ubicación:</p>
-        <p class="text-xs text-gray-600 break-all">${resultado.archivo}</p>
-        <p class="text-xs text-gray-500 mt-1">💡 Revisa tu carpeta de Descargas</p>
-      </div>
-      
-      <div class="flex gap-2">
-        <button id="btn-cerrar-modal-reporte" class="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center justify-center">
-          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          Entendido
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  document.getElementById('btn-cerrar-modal-reporte').addEventListener('click', () => {
-    if (document.body.contains(modal)) {
-      document.body.removeChild(modal);
-    }
-  });
-
-  const handleEsc = (e) => {
-    if (e.key === 'Escape') {
-      if (document.body.contains(modal)) {
-        document.body.removeChild(modal);
-      }
-      document.removeEventListener('keydown', handleEsc);
-    }
-  };
-  document.addEventListener('keydown', handleEsc);
-}

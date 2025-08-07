@@ -1,4 +1,5 @@
 import pandas as pd
+from procesamiento.db_sqlite import guardar_paso2_sqlite  # Importar función de guardado
 
 # Diccionario de columnas a conservar y renombrar
 def get_column_map():
@@ -183,6 +184,68 @@ def procesar_woq(ruta_archivo):
             df["ORDEN_CONTRATO"] = range(1, len(df) + 1)
 
         print(f"✅ DataFrame final listo: {df.shape}")
+        
+        # 💾 INSERTAR REGISTROS A LA BASE DE DATOS
+        try:
+            # Normalizar nombres de columnas para la BD
+            df_bd = df.copy()
+            
+            # Renombrar columnas según el esquema de la BD
+            column_mapping = {
+                "DC": "DC",
+                "N°_WO": "N_WO", 
+                "TIPO": "TIPO",
+                "CONTRATO": "CONTRATO",
+                "DEALER": "DEALER",
+                "STATUS1": "STATUS1",
+                "STATUS2": "STATUS2", 
+                "CERRADO": "CERRADO",
+                "F_SIST": "F_SIST",
+                "CLIENTE": "CLIENTE",
+                "PERU": "TIPO2",
+                "IMP_INST": "F_RECEP",  
+                "IMP_2": "MARCA",
+                "IMP_3": "MODELO",
+                "IMP_4": "SERIE", 
+                "M_CREADOR": "S_SERIE",
+                "F_FACT": "CA",
+                "T_PRICE": "T_PRICE",
+                "F_F": "F_F",
+                "CERRADO2": "CERRADO2",
+                "MTRIC": "MTRIC", 
+                "INSTALACION": "INSTALACION",
+                "N°_CONTRATO": "N_CONTRATO",
+                "MATRI_CERRADO": "MATRI_CERRADO",
+                "N_WO": "N_WO2",
+                "ORDEN_CONTRATO": "ORDEN_CONTRATO",
+                "ES_CERRADO": "es_cerrado"
+            }
+            
+            # Renombrar solo las columnas que existen
+            existing_columns = {k: v for k, v in column_mapping.items() if k in df_bd.columns}
+            df_bd = df_bd.rename(columns=existing_columns)
+            
+            # Agregar columnas faltantes con valores por defecto
+            required_columns = [
+                "DC", "N_WO", "TIPO", "CONTRATO", "DEALER", "STATUS1", "STATUS2",
+                "CERRADO", "F_SIST", "CLIENTE", "TIPO2", "F_RECEP", "MARCA", 
+                "MODELO", "SERIE", "S_SERIE", "CA", "LEC_ANT", "LEC_NUE",
+                "T_PRICE", "F_F", "CERRADO2", "MTRIC", "INSTALACION",
+                "N_CONTRATO", "MATRI_CERRADO", "N_WO2", "ORDEN_CONTRATO", "es_cerrado"
+            ]
+            
+            for col in required_columns:
+                if col not in df_bd.columns:
+                    df_bd[col] = "" if col in ["DC", "TIPO", "STATUS1", "STATUS2", "CERRADO", "F_SIST", "CLIENTE", "TIPO2", "F_RECEP", "MARCA", "MODELO", "SERIE", "S_SERIE", "CA", "T_PRICE", "F_F", "CERRADO2", "MTRIC", "N_CONTRATO", "MATRI_CERRADO", "es_cerrado"] else 0
+            
+            # Guardar en SQLite
+            guardar_paso2_sqlite(df_bd)
+            print(f"✅ {len(df_bd)} registros guardados en SQLite (paso2)")
+                    
+        except Exception as e:
+            print(f"❌ Error al guardar registros en SQLite: {str(e)}")
+            # No interrumpir el flujo principal, solo registrar el error
+        
         return df
 
     except Exception as e:

@@ -299,9 +299,6 @@
                 <button onclick="exportarExcel()" class="btn btn-success btn-sm w-full">
                   📊 Exportar Excel
                 </button>
-                <button onclick="generarReporte()" class="btn btn-info btn-sm w-full">
-                  📋 Generar Reporte
-                </button>
                 <button onclick="clearFile()" class="btn btn-danger btn-sm w-full">
                   🗑️ Limpiar Todo
                 </button>
@@ -382,11 +379,18 @@
     <!-- Mensaje de error dinámico -->
   </div>
 
+  <!-- Scripts de utilidades -->
+  <script type="module" src="/static/js/export-utils.js"></script>
+  
   <!-- Tu script principal -->
-  <script src="/static/js/step1.js"></script>
+  <script type="module" src="/static/js/step1.js"></script>
 
   <!-- Script para garantizar que initializeApp se ejecute correctamente -->
-  <script>
+  <script type="module">
+    // Cargar función de exportación global desde export-utils.js
+    import { exportarExcel } from '/static/js/export-utils.js';
+    window.exportarExcel = exportarExcel;
+    
     document.addEventListener('DOMContentLoaded', () => {
       if (typeof initializeApp === 'function') {
         initializeApp();

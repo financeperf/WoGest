@@ -1,7 +1,31 @@
 // ===================================================================
-// WOGest - Step 3 JavaScript v2.0
+// WOGest - Step 3 JavaScript v2.1 - ERROR TRACKING MEJORADO
 // Cruce de datos entre Paso 1 y Paso 2
 // ===================================================================
+
+// ===================================================================
+// DEBUG Y ERROR TRACKING
+// ===================================================================
+
+function debugStep3(message, data = null) {
+  const timestamp = new Date().toISOString().substr(11, 8);
+  console.log(`[STEP3-${timestamp}] ${message}`, data || '');
+}
+
+function trackDataTableState() {
+  const tabla = document.getElementById('tabla-cruce');
+  const isDataTable = tabla && $.fn.DataTable.isDataTable('#tabla-cruce');
+  const hasInstance = !!(window.appStateStep3?.dataTableInstance);
+  
+  debugStep3('📊 Estado DataTable:', {
+    elementExists: !!tabla,
+    isDataTable: isDataTable,
+    hasInstance: hasInstance,
+    tableHTML: tabla ? 'exists' : 'missing'
+  });
+  
+  return { tabla, isDataTable, hasInstance };
+}
 
 // Estado global de la aplicación para el paso 3
 window.appStateStep3 = window.appStateStep3 || {
@@ -62,6 +86,8 @@ function setupStep3Buttons() {
   if (btnVolver) {
     btnVolver.addEventListener('click', (e) => {
       e.preventDefault();
+      // Limpiar recursos antes de navegar
+      limpiarStep3();
       window.location.href = '/step2';
     });
   }
@@ -72,6 +98,8 @@ function setupStep3Buttons() {
     btnSiguiente.addEventListener('click', (e) => {
       e.preventDefault();
       if (window.appStateStep3.datosCruzados && window.appStateStep3.datosCruzados.length > 0) {
+        // Limpiar recursos antes de navegar
+        limpiarStep3();
         window.location.href = '/step4';
       } else {
         alert('Debe realizar el cruce de datos antes de continuar');
@@ -95,30 +123,33 @@ function verificarEstadoDatos() {
   }
   
   window.pywebview.api.obtener_estado_global()
-    .then(respuesta => {
-      console.log("📥 Estado global recibido:", respuesta);
-      
-      if (respuesta.success) {
-        window.appStateStep3.estadoGlobal = respuesta;
-        actualizarEstadoUI(respuesta);
-        
-        // Verificar si se puede realizar el cruce
-        const paso1Procesado = respuesta.estado.paso1_procesado;
-        const paso2Procesado = respuesta.estado.paso2_procesado;
-        
-        if (paso1Procesado && paso2Procesado) {
-          habilitarBotonCruce();
+    .then((estado) => {
+      try {
+        console.log("✅ Estado global recibido:", estado);
+
+        // Validar que existen las claves necesarias
+        const p1 = estado?.paso1_procesado === true;
+        const p2 = estado?.paso2_procesado === true;
+
+        if (p1 && p2) {
+          habilitarBotonCruce?.();
         } else {
-          deshabilitarBotonCruce();
+          deshabilitarBotonCruce?.();
         }
-      } else {
-        console.error("❌ Error al obtener estado global:", respuesta.message);
-        mostrarErrorStep3("Error al verificar estado de datos previos");
+
+        // Lógica extra: actualizar el panel de UI si existe
+        if (typeof actualizarEstadoUI === 'function') {
+          actualizarEstadoUI({ estado });
+        }
+
+      } catch (err) {
+        console.error("❌ Error interno en verificarEstadoDatos:", err);
+        deshabilitarBotonCruce?.();
       }
     })
-    .catch(error => {
-      console.error("❌ Error al verificar estado:", error);
-      mostrarErrorStep3("Error de conexión al verificar datos");
+    .catch((err) => {
+      console.error("❌ Error externo al obtener estado global:", err);
+      deshabilitarBotonCruce?.();
     });
 }
 
@@ -320,22 +351,45 @@ function actualizarPanelLateral(estadisticas) {
 // ===================================================================
 
 function inicializarDataTableCruce(data) {
-  console.log("📊 Inicializando DataTable Step 3 con", data.length, "registros");
+  debugStep3("📊 Inicializando DataTable Step 3", { registros: data.length });
   
-  const tabla = document.getElementById('tabla-cruce');
-  if (!tabla) return;
+  // Verificar estado inicial
+  const estadoInicial = trackDataTableState();
   
-  // Destruir instancia previa si existe
-  if (window.appStateStep3.dataTableInstance) {
-    window.appStateStep3.dataTableInstance.destroy();
+  if (!estadoInicial.tabla) {
+    console.error("❌ No se encontró la tabla #tabla-cruce");
+    return;
+  }
+  
+  // ✅ SOLUCIÓN ROBUSTA para destruir instancia previa de DataTable
+  try {
+    debugStep3("🔍 Verificando instancia previa de DataTable");
+    
+    // Verificar si ya existe una instancia de DataTable
+    if ($.fn.DataTable.isDataTable('#tabla-cruce')) {
+      debugStep3("🔄 Destruyendo instancia previa de DataTable");
+      $('#tabla-cruce').DataTable().clear().destroy();
+      debugStep3("✅ Instancia destruida correctamente");
+    }
+    
+    // Limpiar referencias independientemente del estado
+    window.appStateStep3.dataTableInstance = null;
+    
+  } catch (err) {
+    debugStep3('⚠️ Error al destruir instancia previa:', err.message);
+    // Forzar limpieza de instancia en caso de error
     window.appStateStep3.dataTableInstance = null;
   }
   
-  // Limpiar tabla
-  const tbody = tabla.querySelector('tbody');
-  if (tbody) tbody.innerHTML = '';
+  // Limpiar completamente la tabla
+  const tbody = estadoInicial.tabla.querySelector('tbody');
+  if (tbody) {
+    tbody.innerHTML = '';
+    debugStep3("🧹 Tabla tbody limpiado");
+  }
   
   // Llenar tabla con datos
+  debugStep3("📝 Llenando tabla con datos");
   data.forEach((row, index) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -346,6 +400,9 @@ function inicializarDataTableCruce(data) {
       <td class="px-4 py-2 border-b text-sm">${row.woq_cliente || 'N/A'}</td>
       <td class="px-4 py-2 border-b text-sm text-center">${generarChipEstadoCruce(row.estado_cruce)}</td>
       <td class="px-4 py-2 border-b text-sm text-center">${generarChipAptoRPA(row.apto_rpa)}</td>
+      <td class="px-4 py-2 border-b text-sm">${row.woq_contrato ?? ''}</td>
+      <td class="px-4 py-2 border-b text-sm">${row.woq_cliente ?? ''}</td>
+      <td class="px-4 py-2 border-b text-sm">${row.woq_es_cerrado ?? ''}</td>
       <td class="px-4 py-2 border-b text-sm text-center">
         <button onclick="verDetallesCruce(${index})" class="btn-icon btn-info" title="Ver detalles">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -358,45 +415,59 @@ function inicializarDataTableCruce(data) {
     tbody.appendChild(tr);
   });
   
-  // Inicializar DataTable con jQuery
+  debugStep3("📊 Datos insertados en tabla", { filas: tbody.children.length });
+  
+  // ✅ Inicializar DataTable con manejo de errores mejorado
   try {
-    window.appStateStep3.dataTableInstance = $('#tabla-cruce').DataTable({
-      scrollX: true,
-      scrollY: '400px',
-      scrollCollapse: true,
-      pageLength: 25,
-      responsive: true,
-      dom: 'Bfrtip',
-      buttons: [
-        {
-          extend: 'excel',
-          text: '<i class="fas fa-file-excel me-2"></i>Exportar Excel',
-          className: 'btn btn-success btn-sm'
-        },
-        {
-          extend: 'copy',
-          text: '<i class="fas fa-copy me-2"></i>Copiar',
-          className: 'btn btn-secondary btn-sm'
-        },
-        {
-          extend: 'csv',
-          text: '<i class="fas fa-file-csv me-2"></i>Exportar CSV',
-          className: 'btn btn-info btn-sm'
-        }
-      ],
-      destroy: true,
-      language: {
-        url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
-      },
-      columnDefs: [
-        { targets: '_all', className: 'text-center' },
-        { targets: [7], orderable: false }
-      ]
-    });
+    // Verificar nuevamente que no exista instancia antes de crear una nueva
+    const estadoFinal = trackDataTableState();
     
-    console.log("✅ DataTable inicializado correctamente");
+    if (!estadoFinal.isDataTable) {
+      debugStep3("🚀 Creando nueva instancia de DataTable");
+      
+      window.appStateStep3.dataTableInstance = $('#tabla-cruce').DataTable({
+        scrollX: true,
+        scrollY: '400px',
+        scrollCollapse: true,
+        pageLength: 25,
+        responsive: true,
+        dom: 'Bfrtip',
+        buttons: [
+          {
+            extend: 'excel',
+            text: '<i class="fas fa-file-excel me-2"></i>Exportar Excel',
+            className: 'btn btn-success btn-sm'
+          },
+          {
+            extend: 'copy',
+            text: '<i class="fas fa-copy me-2"></i>Copiar',
+            className: 'btn btn-secondary btn-sm'
+          },
+          {
+            extend: 'csv',
+            text: '<i class="fas fa-file-csv me-2"></i>Exportar CSV',
+            className: 'btn btn-info btn-sm'
+          }
+        ],
+        language: {
+          url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+        },
+        columnDefs: [
+          { targets: '_all', className: 'text-center' },
+          { targets: [10], orderable: false } // Columna de acciones
+        ],
+        order: [[0, 'asc']] // Ordenar por WO por defecto
+      });
+      
+      debugStep3("✅ DataTable inicializado correctamente");
+    } else {
+      debugStep3("⚠️ Ya existe una instancia de DataTable, omitiendo inicialización");
+    }
   } catch (error) {
-    console.error("❌ Error al inicializar DataTable:", error);
+    debugStep3("❌ Error al inicializar DataTable:", error.message);
+    console.error("Error completo:", error);
+    // En caso de error, intentar limpiar y reinicializar
+    window.appStateStep3.dataTableInstance = null;
   }
 }
 
@@ -761,21 +832,11 @@ function mostrarBotonSiguiente() {
 }
 
 function habilitarBotonCruce() {
-  const btn = document.getElementById('btn-realizar-cruce');
-  if (btn) {
-    btn.disabled = false;
-    btn.classList.remove('disabled');
-    console.log("✅ Botón cruce habilitado");
-  }
+  document.getElementById("btn-realizar-cruce")?.removeAttribute("disabled");
 }
 
 function deshabilitarBotonCruce() {
-  const btn = document.getElementById('btn-realizar-cruce');
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add('disabled');
-    console.log("❌ Botón cruce deshabilitado");
-  }
+  document.getElementById("btn-realizar-cruce")?.setAttribute("disabled", true);
 }
 
 // ===================================================================
@@ -888,6 +949,47 @@ if (!window.pywebviewCheckerStep3) {
     }
   }, 500);
 }
+
+// ===================================================================
+// FUNCIONES DE LIMPIEZA Y DESTRUCCIÓN
+// ===================================================================
+
+function limpiarStep3() {
+  debugStep3("🧹 Iniciando limpieza de recursos del Step 3");
+  
+  try {
+    // Verificar estado inicial
+    trackDataTableState();
+    
+    // Limpiar DataTable si existe
+    if ($.fn.DataTable.isDataTable('#tabla-cruce')) {
+      $('#tabla-cruce').DataTable().clear().destroy();
+      debugStep3("✅ DataTable destruido correctamente");
+    }
+    
+    // Limpiar referencia
+    if (window.appStateStep3) {
+      window.appStateStep3.dataTableInstance = null;
+      debugStep3("🗑️ Referencias DataTable limpiadas");
+    }
+    
+    // Limpiar intervalos si existen
+    if (window.pywebviewCheckerStep3) {
+      clearInterval(window.pywebviewCheckerStep3);
+      window.pywebviewCheckerStep3 = null;
+      debugStep3("⏱️ Intervalos de verificación limpiados");
+    }
+    
+    debugStep3("✅ Limpieza completada exitosamente");
+    
+  } catch (error) {
+    debugStep3("⚠️ Error durante la limpieza:", error.message);
+    console.error("Error completo de limpieza:", error);
+  }
+}
+
+// Event listeners para limpieza
+window.addEventListener('beforeunload', limpiarStep3);
 
 // Event listener para pywebview ready
 window.addEventListener('_pywebviewready', () => {
