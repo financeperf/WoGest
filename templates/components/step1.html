@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="data:,">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Carga y validación de archivo WorkOrder - Paso 1">
+  <title>WOGest - Paso 1: Carga de WorkOrder</title>
+  <!-- CSS Personalizado WOGest -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="min-h-screen flex flex-col">
+  
+  <!-- Progress Bar -->
+  <div class="progress">
+    <div class="progress-bar" style="width: 20%" id="progress-bar"></div>
+  </div>
+
+  <main class="flex-1 container mx-auto px-4 py-6 max-w-7xl">
+    <!-- Header -->
+    <header class="mb-6 animate-fade-in">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-verisure-dark mb-2 flex items-center">
+            <svg class="w-8 h-8 mr-3 text-verisure-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Paso 1: Cargar WorkOrder
+          </h1>
+          <p class="text-lg text-verisure-gray">
+            Selecciona y valida tu archivo Excel (.xlsx) para continuar con la validación de renovaciones
+          </p>
+        </div>
+        <div class="hidden sm:block">
+          <div id="status-indicator" class="badge badge-secondary">
+            <span id="estado-proceso-header">Esperando archivo</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid lg:grid-cols-3 gap-6">
+      <!-- Columna Principal: Carga de Archivo -->
+      <div class="lg:col-span-2">
+        <!-- Card de Carga de Archivo -->
+        <section class="card mb-6 animate-slide-up">
+          <div class="card-body">
+            <div class="mb-6">
+              <label class="form-label" for="archivo1">
+                <svg class="w-5 h-5 mr-2 text-verisure-red" style="display: inline;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                </svg>
+                Selecciona el archivo WorkOrder
+              </label>
+              
+              <div class="file-input-wrapper" id="drop-area">
+                <input 
+                  type="file" 
+                  id="archivo1" 
+                  accept=".xlsx,.xls" 
+                  class="file-input"
+                  aria-describedby="file-help"
+                >
+                
+                <!-- Drag & Drop Indicator -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-0 transition-opacity bg-blue-50 border-2 border-blue-300 border-dashed rounded-lg" id="drag-indicator">
+                  <svg class="w-12 h-12 text-blue-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                  </svg>
+                  <div class="text-blue-600 font-semibold text-lg">Suelta el archivo aquí</div>
+                  <div class="text-blue-600 text-sm">Archivos .xlsx y .xls soportados</div>
+                </div>
+              </div>
+              
+              <div class="mt-3 flex items-center justify-between">
+                <p id="file-help" class="form-help">
+                  Formatos: .xlsx, .xls • Máximo: 50MB
+                </p>
+                <div id="file-size" class="text-xs text-gray-500"></div>
+              </div>
+
+              <!-- Información del Archivo Seleccionado -->
+              <div id="file-info" class="hidden mt-4 alert alert-info animate-fade-in">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center">
+                    <svg class="w-8 h-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <div>
+                      <p id="file-name" class="font-semibold text-gray-800"></p>
+                      <p id="file-details" class="text-sm text-gray-600"></p>
+                    </div>
+                  </div>
+                  <button onclick="clearFile()" class="text-gray-500 hover:text-red-500 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="flex flex-col sm:flex-row gap-4">
+              <button 
+                class="btn btn-primary flex-1" 
+                id="btn-validar"
+                disabled
+              >
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span id="btn-validar-text">Validar archivo</span>
+              </button>
+              
+              <button 
+                class="btn btn-secondary flex-1" 
+                id="btn-siguiente" 
+                disabled
+              >
+                Siguiente paso
+                <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5-5 5M6 12h12"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Mensaje de respuesta -->
+            <div id="preview" class="hidden mt-4"></div>
+          </div>
+        </section>
+
+        <!-- Resultado de Validación -->
+        <section id="validation-content" class="hidden">
+          <!-- Panel de Estadísticas -->
+          <div class="card mb-6 animate-fade-in">
+            <div class="card-header">
+              <h2 class="text-xl font-semibold text-verisure-dark flex items-center">
+                <svg class="w-6 h-6 mr-2 text-verisure-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Estadísticas de Validación
+              </h2>
+            </div>
+            <div class="card-body">
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="text-center p-4 bg-blue-50 rounded-lg">
+                  <div class="text-2xl font-bold text-blue-600" id="total-registros">0</div>
+                  <div class="text-sm text-blue-700">Total</div>
+                </div>
+                <div class="text-center p-4 bg-green-50 rounded-lg">
+                  <div class="text-2xl font-bold text-green-600" id="correctos">0</div>
+                  <div class="text-sm text-green-700">Correctos</div>
+                </div>
+                <div class="text-center p-4 bg-red-50 rounded-lg">
+                  <div class="text-2xl font-bold text-red-600" id="incorrectos">0</div>
+                  <div class="text-sm text-red-700">Incorrectos</div>
+                </div>
+                <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                  <div class="text-2xl font-bold text-yellow-600" id="advertencias">0</div>
+                  <div class="text-sm text-yellow-700">Advertencias</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel de Filtros -->
+      <div class="card mb-6 animate-fade-in">
+        <div class="card-header">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-verisure-dark flex items-center">
+              <svg class="w-5 h-5 mr-2 text-verisure-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z"/>
+              </svg>
+              Filtros de Búsqueda
+            </h3>
+            <span id="contador-filtrados" class="text-sm text-gray-500">0 registros mostrados</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+            <div>
+              <label class="form-label text-sm">Cliente</label>
+              <input type="text" id="filtro-cliente" placeholder="Filtrar por cliente..." class="form-input text-sm">
+            </div>
+            <div>
+              <label class="form-label text-sm">WO</label>
+              <input type="text" id="filtro-wo" placeholder="Filtrar por WO..." class="form-input text-sm">
+            </div>
+            <div>
+              <label class="form-label text-sm">MANT</label>
+              <input type="text" id="filtro-mant" placeholder="Filtrar por MANT..." class="form-input text-sm">
+            </div>
+            <div>
+              <label class="form-label text-sm">Tipo</label>
+              <select id="filtro-tipo" class="form-input text-sm">
+                <option value="">Todos</option>
+                <option value="DMCE">DMCE</option>
+                <option value="AMCE">AMCE</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label text-sm">Estado</label>
+              <select id="filtro-estado" class="form-input text-sm">
+                <option value="">Todos</option>
+                <option value="Correcto">Correcto</option>
+                <option value="Incorrecto">Incorrecto</option>
+                <option value="Advertencia">Advertencia</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button id="btn-limpiar-filtros" class="btn btn-outline btn-sm">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+          <!-- Tabla de Resultados -->
+          <div class="card mb-6 animate-fade-in">
+            <div class="card-header">
+              <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-verisure-dark flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-verisure-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                  Detalle de Registros
+                </h3>
+                <div class="flex gap-2">
+                  <button id="btn-exportar-excel" class="btn btn-success btn-sm">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Exportar Excel
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div id="tabla-resultados">
+                <!-- Tabla generada dinámicamente -->
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Columna Lateral: Panel de Información -->
+      <div class="lg:col-span-1">
+        <!-- Panel de Estado -->
+        <div class="card mb-6 sticky top-6">
+          <div class="card-body">
+            <h3 class="text-lg font-semibold text-verisure-dark mb-4 flex items-center">
+              <svg class="w-5 h-5 mr-2 text-verisure-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              Estado del Proceso
+            </h3>
+            
+            <div id="process-status" class="mb-6">
+              <div class="flex items-center p-3 bg-gray-50 rounded-lg">
+                <div class="status-dot neutral mr-3"></div>
+                <span id="estado-proceso-lateral" class="text-sm text-gray-600">Esperando archivo...</span>
+              </div>
+            </div>
+
+            <!-- Estadísticas Resumidas -->
+            <div id="statistics-summary" class="hidden">
+              <h4 class="font-semibold text-gray-800 mb-3">Resumen</h4>
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="text-center p-3 bg-blue-50 rounded-lg">
+                  <div class="text-xl font-bold text-blue-600" id="stat-total">-</div>
+                  <div class="text-xs text-blue-700">Total</div>
+                </div>
+                <div class="text-center p-3 bg-green-50 rounded-lg">
+                  <div class="text-xl font-bold text-green-600" id="stat-correct">-</div>
+                  <div class="text-xs text-green-700">Correctos</div>
+                </div>
+                <div class="text-center p-3 bg-red-50 rounded-lg">
+                  <div class="text-xl font-bold text-red-600" id="stat-incorrect">-</div>
+                  <div class="text-xs text-red-700">Incorrectos</div>
+                </div>
+                <div class="text-center p-3 bg-purple-50 rounded-lg">
+                  <div class="text-xl font-bold text-purple-600" id="stat-success-rate">-</div>
+                  <div class="text-xs text-purple-700">% Éxito</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Acciones Rápidas -->
+            <div id="quick-actions" class="hidden mt-6 pt-6 border-t border-gray-100">
+              <h4 class="font-semibold text-gray-800 mb-3">Acciones</h4>
+              <div class="flex flex-col gap-2">
+                <button onclick="exportarExcel()" class="btn btn-success btn-sm w-full">
+                  📊 Exportar Excel
+                </button>
+                <button onclick="generarReporte()" class="btn btn-info btn-sm w-full">
+                  📋 Generar Reporte
+                </button>
+                <button onclick="clearFile()" class="btn btn-danger btn-sm w-full">
+                  🗑️ Limpiar Todo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel de Ayuda -->
+        <div class="card" style="background: linear-gradient(135deg, #DBEAFE 0%, #EEF2FF 100%); border-color: #BFDBFE;">
+          <div class="card-body">
+            <h3 class="text-lg font-semibold text-blue-900 mb-3 flex items-center">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              Información
+            </h3>
+            <div class="text-sm text-blue-800">
+              <p class="mb-2">• Solo archivos Excel (.xlsx, .xls)</p>
+              <p class="mb-2">• Máximo 50MB de tamaño</p>
+              <p class="mb-2">• El archivo debe tener las columnas requeridas</p>
+              <p class="mb-2">• Los datos se leen desde la fila 4</p>
+              <p>• Puedes editar registros incorrectos</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer con Progress Indicator -->
+  <footer class="bg-white border-t border-gray-200 py-6 mt-auto">
+    <div class="container mx-auto px-4 max-w-7xl">
+      <nav class="flex justify-center" aria-label="Progreso del proceso">
+        <div class="step-indicator">
+          <div class="step active">1</div>
+          <div class="step-connector active"></div>
+          <div class="step">2</div>
+          <div class="step-connector"></div>
+          <div class="step">3</div>
+          <div class="step-connector"></div>
+          <div class="step">4</div>
+          <div class="step-connector"></div>
+          <div class="step">5</div>
+        </div>
+      </nav>
+      
+      <!-- Labels para pasos (solo en pantallas grandes) -->
+      <div class="hidden md:block mt-3">
+        <div class="flex justify-center">
+          <div class="grid grid-cols-5 gap-4 text-center max-w-2xl">
+            <span class="text-sm font-semibold text-verisure-red">Cargar</span>
+            <span class="text-sm text-gray-500">Validación</span>
+            <span class="text-sm text-gray-500">Revisión</span>
+            <span class="text-sm text-gray-500">Exportar</span>
+            <span class="text-sm text-gray-500">Finalizar</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+  
+  <!-- Loading Overlay -->
+  <div id="loading" class="hidden modal-overlay">
+    <div class="modal">
+      <div class="modal-body text-center">
+        <div class="spinner mx-auto mb-4"></div>
+        <div>
+          <p class="text-verisure-dark font-semibold text-lg">Validando archivo...</p>
+          <p class="text-gray-600 text-sm mt-1">Por favor espera mientras procesamos tu archivo</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Message -->
+  <div id="error-message" class="hidden fixed top-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg z-50">
+    <!-- Mensaje de error dinámico -->
+  </div>
+
+  <!-- Tu script principal -->
+  <script src="/static/js/step1.js"></script>
+
+  <!-- Script para garantizar que initializeApp se ejecute correctamente -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (typeof initializeApp === 'function') {
+        initializeApp();
+      } else {
+        console.error("❌ initializeApp no está definida");
+      }
+    });
+  </script>
+
+</body>
+</html>
