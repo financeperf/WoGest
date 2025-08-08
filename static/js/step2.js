@@ -94,7 +94,7 @@ function setupStep2Buttons() {
   if (btnSiguiente) {
     btnSiguiente.addEventListener('click', (e) => {
       e.preventDefault();
-      if (window.appStateStep2.validationResult && window.appStateStep2.validationResult.detalle.length > 0) {
+      if (window.appStateStep2.validationResult && Array.isArray(window.appStateStep2.validationResult.detalle)) {
         window.location.href = '/step3';
       } else {
         alert('Debe procesar un archivo antes de continuar');
@@ -127,13 +127,8 @@ function setupStep2FileInput() {
     console.log("📂 Archivo seleccionado:", archivo.name);
     window.appStateStep2.selectedFile = archivo;
     
-    // Mostrar información del archivo
+    // Mostrar información del archivo (esto habilitará el botón automáticamente)
     mostrarInfoArchivo(archivo);
-    
-    // Habilitar botón si pywebview está listo
-    if (window.appStateStep2.pywebviewReady) {
-      habilitarBotonProcesar();
-    }
   });
 }
 
@@ -158,11 +153,8 @@ function setupStep2DragAndDrop() {
     if (file) {
       dropArea.files = e.dataTransfer.files;
       window.appStateStep2.selectedFile = file;
+      // mostrarInfoArchivo() habilitará el botón automáticamente
       mostrarInfoArchivo(file);
-      
-      if (window.appStateStep2.pywebviewReady) {
-        habilitarBotonProcesar();
-      }
     }
   });
 }
@@ -185,32 +177,28 @@ function setupStep2BeforeUnload() {
 
 function checkStep2PywebviewReady() {
   console.log("🔍 Verificando disponibilidad de pywebview...");
-  
-  // Verificar si pywebview está disponible
-  if (window.pywebview && window.pywebview.api && !window.appStateStep2.pywebviewReady) {
+
+  if (window.pywebview && window.pywebview.api) {
     console.log("✅ pywebview está disponible!");
     window.appStateStep2.pywebviewReady = true;
-    
-    // Si hay un archivo seleccionado, habilitar el botón procesar
-    if (window.appStateStep2.selectedFile) {
-      console.log("📂 Hay un archivo seleccionado, habilitando botón procesar");
-      habilitarBotonProcesar();
-    }
-  } else if (!window.pywebview || !window.pywebview.api) {
-    console.warn("⚠️ pywebview no está disponible aún");
+    return;
   }
+
+  // Espera y vuelve a intentar después de 500ms
+  setTimeout(() => {
+    if (window.pywebview && window.pywebview.api) {
+      console.log("✅ pywebview se volvió disponible!");
+      window.appStateStep2.pywebviewReady = true;
+    } else {
+      console.warn("⚠️ pywebview aún no está disponible");
+    }
+  }, 500);
 }
 
 // Registrar evento para cuando pywebview esté disponible
 window.addEventListener('_pywebviewready', () => {
   console.log("🎉 _pywebviewready disparado en step2!");
   window.appStateStep2.pywebviewReady = true;
-  
-  // Si hay un archivo seleccionado, habilitar el botón procesar
-  if (window.appStateStep2.selectedFile) {
-    console.log("📂 Hay un archivo seleccionado, habilitando botón procesar");
-    habilitarBotonProcesar();
-  }
 });
 
 function mostrarInfoArchivo(archivo) {
@@ -274,6 +262,11 @@ function mostrarInfoArchivo(archivo) {
     `;
     fileInfo.appendChild(alerta);
   }
+  
+  // ✅ SIEMPRE habilitar el botón cuando se selecciona un archivo
+  // La verificación de pywebview se hará al momento de procesar
+  habilitarBotonProcesar();
+  console.log("✅ Botón procesar habilitado tras selección de archivo");
   
   console.log("✅ Información del archivo mostrada en UI");
 }
@@ -373,6 +366,17 @@ function clearStep2File() {
   const estadoProcesoLateral = document.getElementById('estado-proceso-lateral');
   if (estadoProcesoLateral) {
     estadoProcesoLateral.textContent = "Esperando archivo WOQ";
+  }
+
+  // Ocultar paneles de estadísticas del nuevo diseño
+  const statsPanel = document.getElementById('statistics-summary');
+  if (statsPanel) {
+    statsPanel.classList.add('hidden');
+  }
+
+  const quickActions = document.getElementById('quick-actions');
+  if (quickActions) {
+    quickActions.classList.add('hidden');
   }
 
   console.log("✅ Limpieza de estado completada");
@@ -492,7 +496,8 @@ function procesarArchivoWOQ(event) {
         window.appStateStep2.datosFiltrados = [...resp.detalle];
         window.appStateStep2.yaMostroResultados = false;
 
-        // ✅ Mostrar resultados en UI
+        // ✅ Ocultar loading y mostrar resultados en UI
+        mostrarStep2Loading(false);
         mostrarResultadosStep2(resp);
         mostrarBotonSiguiente();
 
@@ -605,6 +610,22 @@ function mostrarResultadosStep2(resultado) {
       if (resumenEstadisticas) {
         resumenEstadisticas.style.display = 'block';
       }
+      
+      // Calcular estadísticas para el panel lateral
+      const total = detalle.length;
+      const cerrados = detalle.filter(r => r.es_cerrado === "SI" || r.cerrado === "X").length;
+      const pendientes = total - cerrados;
+      
+      // Actualizar panel lateral con nuevo diseño (con pequeño delay para asegurar DOM)
+      setTimeout(() => {
+        actualizarEstadisticasStep2({
+          total: total,
+          cerrados: cerrados,
+          pendientes: pendientes,
+          detalle: detalle
+        });
+      }, 100);
+      
       console.log("✅ Estadísticas principales mostradas");
     } catch (statsError) {
       console.error("❌ Error al mostrar estadísticas:", statsError);
@@ -661,14 +682,14 @@ function mostrarResultadosStep2(resultado) {
       
       // ✅ Mostrar y conectar botón superior
       const btnSiguienteTop = document.getElementById('btn-siguiente-top');
-      if (btnSiguienteTop && window.appStateStep2.validationResult?.detalle?.length > 0) {
+      if (btnSiguienteTop && window.appStateStep2.validationResult && Array.isArray(window.appStateStep2.validationResult.detalle) && window.appStateStep2.validationResult.detalle.length > 0) {
         btnSiguienteTop.classList.remove('hidden');
 
         // ✅ Navegar al paso 3 al hacer clic (solo si no tiene listener ya)
         if (!btnSiguienteTop.hasAttribute('data-listener-added')) {
           btnSiguienteTop.addEventListener('click', (e) => {
             e.preventDefault();
-            if (window.appStateStep2.validationResult && window.appStateStep2.validationResult.detalle.length > 0) {
+            if (window.appStateStep2.validationResult && Array.isArray(window.appStateStep2.validationResult.detalle)) {
               window.location.href = '/step3';
             } else {
               alert('Debe procesar un archivo antes de continuar');
@@ -685,9 +706,11 @@ function mostrarResultadosStep2(resultado) {
     
     // 7. Actualizar estado del proceso en la barra de estado
     try {
+      const detalle = window.appStateStep2.datosFiltrados; // Usar los datos almacenados
+      
       const estadoProceso = document.getElementById('estado-proceso');
       if (estadoProceso) {
-        // estadoProceso.textContent = `${detalle.length} registros WOQ procesados`;
+        estadoProceso.textContent = `${detalle.length} registros WOQ procesados`;
         estadoProceso.className = "text-green-600";
       }
       
@@ -695,6 +718,8 @@ function mostrarResultadosStep2(resultado) {
       if (estadoProcesoLateral) {
         estadoProcesoLateral.textContent = `${detalle.length} registros WOQ procesados`;
       }
+      
+      console.log("✅ Estado del proceso actualizado correctamente");
     } catch (estadoError) {
       console.error("❌ Error al actualizar estado del proceso:", estadoError);
     }
@@ -750,7 +775,7 @@ function configurarFiltrosStep2() {
 }
 
 function aplicarFiltrosStep2() {
-  if (!window.appStateStep2.validationResult || !window.appStateStep2.validationResult.detalle) {
+  if (!window.appStateStep2.validationResult || !Array.isArray(window.appStateStep2.validationResult.detalle)) {
     console.warn("❌ No hay datos para filtrar");
     return;
   }
@@ -810,33 +835,105 @@ function aplicarFiltrosStep2() {
 
 
 function mostrarEstadisticasStep2(data) {
-  if (!data || !Array.isArray(data)) {
-    console.warn("❌ Datos inválidos para estadísticas");
-    return;
-  }
+  if (!data || !Array.isArray(data)) return;
 
   const total = data.length;
-  let cerrados = 0;
-
-  if (data[0].hasOwnProperty("es_cerrado")) {
-    cerrados = data.filter(r => r.es_cerrado === "SI").length;
-  } else if (data[0].hasOwnProperty("cerrado")) {
-    cerrados = data.filter(r => r.cerrado === "X").length;
-  }
-
+  const cerrados = data.filter(r => r.es_cerrado === "SI" || r.cerrado === "X").length;
   const pendientes = total - cerrados;
   const porcentaje = total > 0 ? Math.round((cerrados / total) * 100) : 0;
 
-  // Actualizar elementos con ID individuales
-  document.getElementById("stat-step2-total").textContent = total;
-  document.getElementById("stat-step2-cerrados").textContent = cerrados;
-  document.getElementById("stat-step2-pendientes").textContent = pendientes;
-  document.getElementById("stat-step2-porcentaje").textContent = porcentaje + "%";
+  // Mostrar sección
+  const contenedor = document.getElementById('resumen-estadisticas');
+  if (contenedor) {
+    contenedor.classList.remove('hidden');
+  }
 
-  // Asegurar que el panel esté visible
-  document.getElementById("estadisticas-step2")?.classList.remove("hidden");
+  // Actualizar valores del panel central
+  const statTotal = document.getElementById('stat-total');
+  const statCerrados = document.getElementById('stat-cerrados');
+  const statPendientes = document.getElementById('stat-pendientes');
+  const statPorcentaje = document.getElementById('stat-porcentaje');
 
-  console.log("📊 Estadísticas actualizadas para Step 2");
+  if (statTotal) statTotal.innerText = total;
+  if (statCerrados) statCerrados.innerText = cerrados;
+  if (statPendientes) statPendientes.innerText = pendientes;
+  if (statPorcentaje) statPorcentaje.innerText = `${porcentaje}%`;
+
+  // TAMBIÉN ACTUALIZAR PANEL LATERAL DIRECTAMENTE
+  const statLateralTotal = document.getElementById('stat-lateral-total');
+  const statLateralCerrados = document.getElementById('stat-lateral-correct');
+  const statLateralPendientes = document.getElementById('stat-lateral-incorrect');
+  const statLateralPorcentaje = document.getElementById('stat-lateral-success-rate');
+
+  if (statLateralTotal) statLateralTotal.innerText = total;
+  if (statLateralCerrados) statLateralCerrados.innerText = cerrados;
+  if (statLateralPendientes) statLateralPendientes.innerText = pendientes;
+  if (statLateralPorcentaje) statLateralPorcentaje.innerText = `${porcentaje}%`;
+
+  // Mostrar el panel lateral de estadísticas
+  const statsPanel = document.getElementById('statistics-summary');
+  if (statsPanel) {
+    statsPanel.classList.remove('hidden');
+  }
+
+  console.log(`✅ Estadísticas actualizadas - Central: ${total}/${cerrados}/${pendientes}/${porcentaje}%`);
+  console.log(`✅ Panel lateral también actualizado`);
+}
+
+// ===================================================================
+// ACTUALIZAR ESTADÍSTICAS - PANEL LATERAL
+// ===================================================================
+
+function actualizarEstadisticasStep2(stats) {
+  console.log("📊 Actualizando estadísticas del panel lateral Step 2:", stats);
+  console.log("🔍 Verificando elementos DOM con prefijo 'stat-lateral-'...");
+  
+  // Calcular estadísticas si no están ya calculadas
+  let total = stats.total || 0;
+  let cerrados = stats.cerrados || 0;
+  let pendientes = stats.pendientes || 0;
+  let porcentaje = 0;
+  
+  // Si stats no tiene las estadísticas calculadas, intentar calcularlas de los datos
+  if (stats.detalle && Array.isArray(stats.detalle)) {
+    total = stats.detalle.length;
+    cerrados = stats.detalle.filter(r => r.es_cerrado === "SI" || r.cerrado === "X").length;
+    pendientes = total - cerrados;
+    porcentaje = total > 0 ? Math.round((cerrados / total) * 100) : 0;
+  } else {
+    porcentaje = total > 0 ? Math.round((cerrados / total) * 100) : 0;
+  }
+
+  const statElements = {
+    'stat-lateral-total': total,
+    'stat-lateral-correct': cerrados,
+    'stat-lateral-incorrect': pendientes,
+    'stat-lateral-success-rate': porcentaje + '%'
+  };
+
+  Object.entries(statElements).forEach(([id, valor]) => {
+    const elemento = document.getElementById(id);
+    if (elemento) {
+      elemento.textContent = valor;
+      console.log(`✅ Actualizado ${id}: ${valor}`);
+    } else {
+      console.warn(`⚠️ No se encontró elemento con ID: ${id}`);
+    }
+  });
+
+  const statsPanel = document.getElementById('statistics-summary');
+  if (statsPanel) {
+    statsPanel.classList.remove('hidden');
+    console.log("✅ Panel de estadísticas mostrado");
+  }
+
+  const quickActions = document.getElementById('quick-actions');
+  if (quickActions) {
+    quickActions.classList.remove('hidden');
+    console.log("✅ Panel de acciones rápidas mostrado");
+  }
+  
+  console.log("📊 Estadísticas del panel lateral actualizadas correctamente");
 }
 
 // ===================================================================
@@ -1101,8 +1198,11 @@ function habilitarBotonProcesar() {
   const btnProcesar = document.getElementById('btn-procesar');
   if (btnProcesar) {
     btnProcesar.disabled = false;
-    btnProcesar.classList.remove('btn-disabled');
+    btnProcesar.classList.remove('btn-disabled', 'opacity-50', 'cursor-not-allowed');
     btnProcesar.classList.add('btn-primary');
+    console.log("✅ Botón procesar habilitado");
+  } else {
+    console.warn("⚠️ No se encontró el botón btn-procesar");
   }
 }
 
@@ -1110,8 +1210,11 @@ function deshabilitarBotonProcesar() {
   const btnProcesar = document.getElementById('btn-procesar');
   if (btnProcesar) {
     btnProcesar.disabled = true;
-    btnProcesar.classList.add('btn-disabled');
+    btnProcesar.classList.add('btn-disabled', 'opacity-50', 'cursor-not-allowed');
     btnProcesar.classList.remove('btn-primary');
+    console.log("✅ Botón procesar deshabilitado");
+  } else {
+    console.warn("⚠️ No se encontró el botón btn-procesar");
   }
 }
 
@@ -1372,6 +1475,18 @@ function verDetalleWoq(index) {
   });
 }
 
+// ===================================================================
+// EXPONER FUNCIONES GLOBALMENTE PARA HTML
+// ===================================================================
+
+// Hacer la función exportarExcel disponible globalmente para los botones HTML
+window.exportarExcel = () => {
+  exportarExcel({ detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
+};
+
 // Iniciar app al cargar
 document.addEventListener("DOMContentLoaded", initializeStep2App);
+
+// Exponer initializeStep2App globalmente para navegación SPA
+window.initializeStep2App = initializeStep2App;
 

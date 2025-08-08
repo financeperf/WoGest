@@ -156,10 +156,38 @@
           </div>
         </section>
 
-        <!-- Resumen de Estadísticas -->
-        <div id="resumen-estadisticas" class="hidden">
-          <!-- Contenido generado dinámicamente por JavaScript -->
-        </div>
+        <!-- NUEVO PANEL DE ESTADÍSTICAS -->
+        <section id="resumen-estadisticas" class="card mb-6 animate-fade-in hidden">
+          <div class="card-header">
+            <h3 class="text-lg font-semibold text-verisure-dark flex items-center">
+              <svg class="w-6 h-6 mr-2 text-verisure-red" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M3 3V21H21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M18 9V19H15V9H18Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M13 5V19H10V5H13Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8 13V19H5V13H8Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Estadísticas del WOQ
+            </h3>
+          </div>
+          <div class="card-body grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+            <div class="bg-blue-100 p-4 rounded text-center">
+              <div class="text-2xl font-bold text-blue-600" id="stat-total">-</div>
+              <div>Total</div>
+            </div>
+            <div class="bg-green-100 p-4 rounded text-center">
+              <div class="text-2xl font-bold text-green-600" id="stat-cerrados">-</div>
+              <div>Cerrados</div>
+            </div>
+            <div class="bg-red-100 p-4 rounded text-center">
+              <div class="text-2xl font-bold" style="color: #e64d49;" id="stat-pendientes">-</div>
+              <div style="color: #e64d49;">Pendientes</div>
+            </div>
+            <div class="p-4 rounded text-center" style="background-color: #f3e8ff;">
+              <div class="text-2xl font-bold text-purple-600" id="stat-porcentaje">-</div>
+              <div style="color: #a461eb;">% Cerrados</div>
+            </div>
+          </div>
+        </section>
 
         <!-- Resultados -->
         <div id="resultado-woq" class="hidden">
@@ -271,31 +299,33 @@
             </div>
 
             <!-- Estadísticas Resumidas -->
-          <div id="estadisticas-step2" class="card p-6 rounded-2xl shadow-xl bg-white mt-4 hidden">
-            <div class="flex items-center mb-4">
-              <svg class="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11 17v-6m4 6V7m-8 10v-3"></path>
-              </svg>
-              <h2 class="text-base font-semibold text-gray-900">Estado del Proceso</h2>
+            <div id="statistics-summary" class="hidden">
+              <h4 class="font-semibold text-gray-800 mb-3">Resumen</h4>
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="text-center p-3 bg-blue-100 rounded-lg">
+                  <div class="text-xl font-bold text-blue-600" id="stat-lateral-total">-</div>
+                  <div class="text-xs text-blue-700">Total</div>
+                </div>
+                <div class="text-center p-3 bg-green-100 rounded-lg">
+                  <div class="text-xl font-bold text-green-600" id="stat-lateral-correct">-</div>
+                  <div class="text-xs text-green-700">Cerrados</div>
+                </div>
+                <div class="text-center p-3 bg-red-100 rounded-lg">
+                  <div class="text-xl font-bold" style="color: #e64d49;" id="stat-lateral-incorrect">-</div>
+                  <div class="text-xs" style="color: #e64d49;">Pendientes</div>
+                </div>
+                <div class="text-center p-3 rounded-lg" style="background-color: #f3e8ff;">
+                  <div class="text-xl font-bold text-purple-600" id="stat-lateral-success-rate">-</div>
+                  <div class="text-xs" style="color: #a461eb;">% Cerrados</div>
+                </div>
+              </div>
             </div>
-
-            <div class="bg-gray-100 rounded-md p-3 text-sm text-gray-700 mb-4 flex items-center">
-              <span class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-2"></span>
-              <span><span id="stat-step2-total">0</span> registros WOQ procesados</span>
-            </div>
-
-            <ul class="leading-6 text-sm text-gray-800 space-y-1">
-              <li>✅ Cerrados: <span id="stat-step2-cerrados">0</span></li>
-              <li>🕓 Pendientes: <span id="stat-step2-pendientes">0</span></li>
-              <li>📊 % Cerrados: <span id="stat-step2-porcentaje">0%</span></li>
-            </ul>
-          </div>
 
             <!-- Acciones Rápidas -->
-            <div id="quick-actions-step2" class="hidden mt-6 pt-6 border-t border-gray-100">
+            <div id="quick-actions" class="hidden mt-6 pt-6 border-t border-gray-100">
               <h4 class="font-semibold text-gray-800 mb-3">Acciones</h4>
               <div class="flex flex-col gap-2">
-                <button onclick="exportarStep2()" class="btn btn-success btn-sm w-full">
+                <button onclick="exportarExcel()" class="btn btn-success btn-sm w-full">
                   📊 Exportar Excel
                 </button>
                 <button onclick="clearStep2File()" class="btn btn-danger btn-sm w-full">
@@ -362,15 +392,14 @@
 
   <!-- Scripts -->
   <script type="module" src="/static/js/step2.js"></script>
-  <script src="/static/js/debug_step2.js"></script>
-
-  <!-- Script para garantizar que initializeStep2App se ejecute correctamente -->
+  
+  <!-- Script para reinicialización al volver de otros pasos -->
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      if (typeof initializeStep2App === 'function') {
-        initializeStep2App();
-      } else {
-        console.error("❌ initializeStep2App no está definida");
+      // Verificar si la función está disponible globalmente (para navegación SPA)
+      if (typeof window.initializeStep2App === 'function') {
+        console.log("🔄 Reinicializando Step2 desde HTML...");
+        window.initializeStep2App();
       }
     });
   </script>
