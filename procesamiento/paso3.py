@@ -490,57 +490,6 @@ def buscar_registros_similares(wo_numero: str, datos_woq: List[Dict], umbral_sim
     
     return sorted(candidatos, key=lambda x: x['similitud'], reverse=True)
 
-# Ejemplo de uso y pruebas
-if __name__ == "__main__":
-    # Datos de prueba
-    datos_paso1_prueba = [
-        {
-            'wo': 'WO001',
-            'cliente': 'Cliente A',
-            'referencia': 'REF001',
-            'tipo': 'AMCE',
-            'cantidad': 1,
-            'estado': 'correcto'
-        },
-        {
-            'wo': 'WO002',
-            'cliente': 'Cliente B',
-            'referencia': 'REF002',
-            'tipo': 'DMCE',
-            'cantidad': -1,
-            'estado': 'correcto'
-        }
-    ]
-    
-    datos_paso2_prueba = [
-        {
-            'N_WO': 'WO001',
-            'CONTRATO': 'CONT001',
-            'CLIENTE': 'Cliente A',
-            'ES_CERRADO': False
-        },
-        {
-            'N_WO': 'WO002',
-            'CONTRATO': 'CONT002',
-            'CLIENTE': 'Cliente B',
-            'ES_CERRADO': True
-        }
-    ]
-    
-    # Ejecutar cruce de prueba
-    resultado = realizar_cruce_datos(datos_paso1_prueba, datos_paso2_prueba)
-    
-    if resultado['success']:
-        print("✅ Cruce de prueba exitoso")
-        print(f"Registros cruzados: {len(resultado['datos_cruzados'])}")
-        print(f"Estadísticas: {resultado['estadisticas']}")
-        
-        # Generar reporte
-        reporte = generar_reporte_cruce(resultado['datos_cruzados'], resultado['estadisticas'])
-        print("\n" + reporte)
-    else:
-        print(f"❌ Error en cruce de prueba: {resultado['message']}")
-
 def ejecutar_paso3_y_exportar():
     from procesamiento.db_sqlite import (
         leer_temp_paso1,
@@ -575,6 +524,4 @@ def ejecutar_paso3_y_exportar():
         print("🧹 Tablas temporales limpiadas.")
     else:
         print(f"⚠️ Cruce fallido: {resultado.get('message')}")
-
-<script type="module" src="/static/js/step1.js"></script>
 

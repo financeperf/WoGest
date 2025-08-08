@@ -3,6 +3,9 @@
 // Cruce de datos entre Paso 1 y Paso 2
 // ===================================================================
 
+// Importar función de exportación
+import { exportarExcel } from './export-utils.js';
+
 // ===================================================================
 // DEBUG Y ERROR TRACKING
 // ===================================================================
@@ -10,21 +13,6 @@
 function debugStep3(message, data = null) {
   const timestamp = new Date().toISOString().substr(11, 8);
   console.log(`[STEP3-${timestamp}] ${message}`, data || '');
-}
-
-function trackDataTableState() {
-  const tabla = document.getElementById('tabla-cruce');
-  const isDataTable = tabla && $.fn.DataTable.isDataTable('#tabla-cruce');
-  const hasInstance = !!(window.appStateStep3?.dataTableInstance);
-  
-  debugStep3('📊 Estado DataTable:', {
-    elementExists: !!tabla,
-    isDataTable: isDataTable,
-    hasInstance: hasInstance,
-    tableHTML: tabla ? 'exists' : 'missing'
-  });
-  
-  return { tabla, isDataTable, hasInstance };
 }
 
 // Estado global de la aplicación para el paso 3
@@ -41,7 +29,12 @@ window.appStateStep3 = window.appStateStep3 || {
     apto_rpa: ''
   },
   datosFiltrados: [],
-  dataTableInstance: null
+  paginacion: {
+    paginaActual: 1,
+    registrosPorPagina: 50,
+    totalRegistros: 0,
+    totalPaginas: 0
+  }
 };
 
 // ===================================================================
@@ -78,6 +71,48 @@ function setupStep3Buttons() {
       
       mostrarStep3Loading(true);
       realizarCruceDatos();
+    });
+  }
+  
+  // Botón exportar excel principal
+  const btnExportarExcel = document.getElementById('btn-exportar-excel');
+  if (btnExportarExcel) {
+    btnExportarExcel.addEventListener('click', (e) => {
+      e.preventDefault();
+      const datos = window.appStateStep3?.datosFiltrados || [];
+      
+      if (datos.length === 0) {
+        alert("❌ No hay datos del cruce para exportar");
+        return;
+      }
+
+      exportarExcel(
+        { detalle: datos },
+        "CrucePaso3.xlsx",
+        (resp) => console.log("✅ Exportación completada", resp),
+        (err) => console.error("❌ Error al exportar", err)
+      );
+    });
+  }
+  
+  // Botón exportar excel lateral
+  const btnExportarExcelLateral = document.getElementById('btn-exportar-excel-lateral');
+  if (btnExportarExcelLateral) {
+    btnExportarExcelLateral.addEventListener('click', (e) => {
+      e.preventDefault();
+      const datos = window.appStateStep3?.datosFiltrados || [];
+      
+      if (datos.length === 0) {
+        alert("❌ No hay datos del cruce para exportar");
+        return;
+      }
+
+      exportarExcel(
+        { detalle: datos },
+        "CrucePaso3.xlsx",
+        (resp) => console.log("✅ Exportación completada", resp),
+        (err) => console.error("❌ Error al exportar", err)
+      );
     });
   }
   
@@ -247,49 +282,71 @@ function mostrarResultadosCruce(resultado) {
   
   const contenedor = document.getElementById('resultado-cruce');
   if (!contenedor) return;
-  
+
+  // ✅ Mostrar el contenedor si estaba oculto
+  contenedor.classList.remove('hidden');
+  contenedor.style.display = 'block';
+
   // Ocultar errores y mostrar resultados
   ocultarErrorStep3();
-  contenedor.style.display = 'block';
-  
+
   const datosCruzados = resultado.datos_cruzados || [];
-  
+
   // Actualizar estado global
   window.appStateStep3.datosFiltrados = [...datosCruzados];
   
+  // Configurar paginación
+  window.appStateStep3.paginacion.totalRegistros = datosCruzados.length;
+  window.appStateStep3.paginacion.totalPaginas = Math.ceil(
+    datosCruzados.length / window.appStateStep3.paginacion.registrosPorPagina
+  );
+  window.appStateStep3.paginacion.paginaActual = 1;
+
   // Mostrar estadísticas del cruce
   mostrarEstadisticasCruce(resultado.estadisticas);
-  
+
   // Configurar filtros
   configurarFiltrosCruce();
-  
-  // Inicializar DataTable
-  inicializarDataTableCruce(datosCruzados);
-  
+
+  // Inicializar tabla con paginación personalizada
+  mostrarTablaCruce();
+  mostrarControlesPaginacionCruce();
+
   // Actualizar contador de filtros
   actualizarContadorFiltrosCruce();
-  
+
   // Actualizar panel lateral
   actualizarPanelLateral(resultado.estadisticas);
+
+  // ✅ Mostrar botón "Siguiente paso"
+  mostrarBotonSiguiente();
 }
+
 
 function mostrarEstadisticasCruce(estadisticas) {
   const resumenEstadisticas = document.getElementById('resumen-estadisticas-cruce');
-  if (!resumenEstadisticas) return;
-  
+  if (!resumenEstadisticas || !estadisticas) return;
+
+  // 🔧 CORRECCIÓN CLAVE:
+  resumenEstadisticas.classList.remove('hidden');
+  resumenEstadisticas.style.display = 'block';
+
   const totalCruzados = estadisticas.total_cruzados || 0;
   const pendientes = estadisticas.pendientes_cierre || 0;
   const cerrados = estadisticas.cerrados || 0;
   const aptosRPA = estadisticas.aptos_rpa || 0;
   const sinWOQ = estadisticas.sin_woq || 0;
   const porcentajeCruce = estadisticas.porcentaje_cruce || 0;
-  
+
   resumenEstadisticas.innerHTML = `
     <div class="card mb-6 animate-fade-in">
       <div class="card-header">
         <h2 class="text-xl font-semibold text-verisure-dark flex items-center">
-          <svg class="w-6 h-6 mr-2 text-verisure-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          <svg class="w-6 h-6 mr-2 text-verisure-red" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M3 3V21H21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M18 9V19H15V9H18Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13 5V19H10V5H13Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 13V19H5V13H8Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           Estadísticas del Cruce de Datos
         </h2>
@@ -298,35 +355,34 @@ function mostrarEstadisticasCruce(estadisticas) {
         <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div class="text-center p-4 bg-blue-50 rounded-lg">
             <div class="text-2xl font-bold text-blue-600">${totalCruzados}</div>
-            <div class="text-sm text-blue-700">Cruzados</div>
-          </div>
-          <div class="text-center p-4 bg-yellow-50 rounded-lg">
-            <div class="text-2xl font-bold text-yellow-600">${pendientes}</div>
-            <div class="text-sm text-yellow-700">Pendientes</div>
+            <div class="text-xs text-blue-700">Total</div>
           </div>
           <div class="text-center p-4 bg-green-50 rounded-lg">
-            <div class="text-2xl font-bold text-green-600">${cerrados}</div>
-            <div class="text-sm text-green-700">Cerrados</div>
+            <div class="text-2xl font-bold text-green-600">${pendientes}</div>
+            <div class="text-xs text-green-700">Pendientes</div>
+          </div>
+          <div class="text-center p-4 bg-red-50 rounded-lg">
+            <div class="text-2xl font-bold text-red-600">${cerrados}</div>
+            <div class="text-xs text-red-700">Cerrados</div>
           </div>
           <div class="text-center p-4 bg-purple-50 rounded-lg">
             <div class="text-2xl font-bold text-purple-600">${aptosRPA}</div>
-            <div class="text-sm text-purple-700">Aptos RPA</div>
+            <div class="text-xs text-purple-700">Aptos RPA</div>
           </div>
-          <div class="text-center p-4 bg-red-50 rounded-lg">
-            <div class="text-2xl font-bold text-red-600">${sinWOQ}</div>
-            <div class="text-sm text-red-700">Sin WOQ</div>
+          <div class="text-center p-4 bg-yellow-50 rounded-lg">
+            <div class="text-2xl font-bold text-yellow-600">${sinWOQ}</div>
+            <div class="text-xs text-yellow-700">Sin WOQ</div>
           </div>
-          <div class="text-center p-4 bg-indigo-50 rounded-lg">
-            <div class="text-2xl font-bold text-indigo-600">${porcentajeCruce}%</div>
-            <div class="text-sm text-indigo-700">% Cruce</div>
+          <div class="text-center p-4 bg-gray-100 rounded-lg">
+            <div class="text-2xl font-bold text-gray-800">${porcentajeCruce}%</div>
+            <div class="text-xs text-gray-700">% Cruce</div>
           </div>
         </div>
       </div>
     </div>
   `;
-  
-  resumenEstadisticas.style.display = 'block';
 }
+
 
 function actualizarPanelLateral(estadisticas) {
   const panel = document.getElementById('statistics-summary-step3');
@@ -347,128 +403,160 @@ function actualizarPanelLateral(estadisticas) {
 }
 
 // ===================================================================
-// DATATABLE
+// PAGINACIÓN PERSONALIZADA (Similar a Step1)
 // ===================================================================
 
-function inicializarDataTableCruce(data) {
-  debugStep3("📊 Inicializando DataTable Step 3", { registros: data.length });
-  
-  // Verificar estado inicial
-  const estadoInicial = trackDataTableState();
-  
-  if (!estadoInicial.tabla) {
-    console.error("❌ No se encontró la tabla #tabla-cruce");
-    return;
+function mostrarTablaCruce() {
+  const datosPagina = obtenerDatosPaginaActualCruce();
+  const tablaHtml = generarTablaHtmlCruce(datosPagina);
+
+  const tablaContainer = document.getElementById('tabla-cruce');
+  if (tablaContainer) {
+    tablaContainer.innerHTML = tablaHtml;
   }
-  
-  // ✅ SOLUCIÓN ROBUSTA para destruir instancia previa de DataTable
-  try {
-    debugStep3("🔍 Verificando instancia previa de DataTable");
-    
-    // Verificar si ya existe una instancia de DataTable
-    if ($.fn.DataTable.isDataTable('#tabla-cruce')) {
-      debugStep3("🔄 Destruyendo instancia previa de DataTable");
-      $('#tabla-cruce').DataTable().clear().destroy();
-      debugStep3("✅ Instancia destruida correctamente");
-    }
-    
-    // Limpiar referencias independientemente del estado
-    window.appStateStep3.dataTableInstance = null;
-    
-  } catch (err) {
-    debugStep3('⚠️ Error al destruir instancia previa:', err.message);
-    // Forzar limpieza de instancia en caso de error
-    window.appStateStep3.dataTableInstance = null;
-  }
-  
-  // Limpiar completamente la tabla
-  const tbody = estadoInicial.tabla.querySelector('tbody');
-  if (tbody) {
-    tbody.innerHTML = '';
-    debugStep3("🧹 Tabla tbody limpiado");
-  }
-  
-  // Llenar tabla con datos
-  debugStep3("📝 Llenando tabla con datos");
-  data.forEach((row, index) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="px-4 py-2 border-b text-sm">${row.wo || ''}</td>
-      <td class="px-4 py-2 border-b text-sm">${row.cliente || ''}</td>
-      <td class="px-4 py-2 border-b text-sm">${row.tipo || ''}</td>
-      <td class="px-4 py-2 border-b text-sm text-center">${row.cantidad || 0}</td>
-      <td class="px-4 py-2 border-b text-sm">${row.woq_cliente || 'N/A'}</td>
-      <td class="px-4 py-2 border-b text-sm text-center">${generarChipEstadoCruce(row.estado_cruce)}</td>
-      <td class="px-4 py-2 border-b text-sm text-center">${generarChipAptoRPA(row.apto_rpa)}</td>
-      <td class="px-4 py-2 border-b text-sm">${row.woq_contrato ?? ''}</td>
-      <td class="px-4 py-2 border-b text-sm">${row.woq_cliente ?? ''}</td>
-      <td class="px-4 py-2 border-b text-sm">${row.woq_es_cerrado ?? ''}</td>
-      <td class="px-4 py-2 border-b text-sm text-center">
-        <button onclick="verDetallesCruce(${index})" class="btn-icon btn-info" title="Ver detalles">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-          </svg>
+}
+
+function obtenerDatosPaginaActualCruce() {
+  const inicio = (window.appStateStep3.paginacion.paginaActual - 1) * window.appStateStep3.paginacion.registrosPorPagina;
+  const fin = inicio + window.appStateStep3.paginacion.registrosPorPagina;
+  return window.appStateStep3.datosFiltrados.slice(inicio, fin);
+}
+
+function mostrarControlesPaginacionCruce() {
+  const { paginaActual, totalPaginas, totalRegistros, registrosPorPagina } = window.appStateStep3.paginacion;
+
+  const inicio = (paginaActual - 1) * registrosPorPagina + 1;
+  const fin = Math.min(paginaActual * registrosPorPagina, totalRegistros);
+
+  const controlsHtml = `
+    <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 border-t">
+      <div class="flex items-center gap-4">
+        <span class="text-sm text-gray-700">
+          Mostrando ${inicio} a ${fin} de ${totalRegistros} registros
+        </span>
+        <select id="registros-por-pagina-cruce" class="form-input text-sm" style="width: auto; min-width: 100px;">
+          <option value="10" ${registrosPorPagina === 10 ? 'selected' : ''}>10 por página</option>
+          <option value="25" ${registrosPorPagina === 25 ? 'selected' : ''}>25 por página</option>
+          <option value="50" ${registrosPorPagina === 50 ? 'selected' : ''}>50 por página</option>
+          <option value="100" ${registrosPorPagina === 100 ? 'selected' : ''}>100 por página</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="irPaginaAnteriorCruce()" ${paginaActual <= 1 ? 'disabled' : ''} class="btn btn-outline btn-sm">
+          ← Anterior
         </button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-  
-  debugStep3("📊 Datos insertados en tabla", { filas: tbody.children.length });
-  
-  // ✅ Inicializar DataTable con manejo de errores mejorado
-  try {
-    // Verificar nuevamente que no exista instancia antes de crear una nueva
-    const estadoFinal = trackDataTableState();
-    
-    if (!estadoFinal.isDataTable) {
-      debugStep3("🚀 Creando nueva instancia de DataTable");
-      
-      window.appStateStep3.dataTableInstance = $('#tabla-cruce').DataTable({
-        scrollX: true,
-        scrollY: '400px',
-        scrollCollapse: true,
-        pageLength: 25,
-        responsive: true,
-        dom: 'Bfrtip',
-        buttons: [
-          {
-            extend: 'excel',
-            text: '<i class="fas fa-file-excel me-2"></i>Exportar Excel',
-            className: 'btn btn-success btn-sm'
-          },
-          {
-            extend: 'copy',
-            text: '<i class="fas fa-copy me-2"></i>Copiar',
-            className: 'btn btn-secondary btn-sm'
-          },
-          {
-            extend: 'csv',
-            text: '<i class="fas fa-file-csv me-2"></i>Exportar CSV',
-            className: 'btn btn-info btn-sm'
-          }
-        ],
-        language: {
-          url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
-        },
-        columnDefs: [
-          { targets: '_all', className: 'text-center' },
-          { targets: [10], orderable: false } // Columna de acciones
-        ],
-        order: [[0, 'asc']] // Ordenar por WO por defecto
-      });
-      
-      debugStep3("✅ DataTable inicializado correctamente");
-    } else {
-      debugStep3("⚠️ Ya existe una instancia de DataTable, omitiendo inicialización");
+        <span class="text-sm text-gray-700">
+          Página ${paginaActual} de ${totalPaginas}
+        </span>
+        <button onclick="irPaginaSiguienteCruce()" ${paginaActual >= totalPaginas ? 'disabled' : ''} class="btn btn-outline btn-sm">
+          Siguiente →
+        </button>
+      </div>
+    </div>
+  `;
+
+  const tablaContainer = document.getElementById('tabla-cruce');
+  if (tablaContainer) {
+    // Eliminar controles anteriores si existen
+    const existingControls = tablaContainer.querySelector('.paginacion-controls');
+    if (existingControls) {
+      existingControls.remove();
     }
-  } catch (error) {
-    debugStep3("❌ Error al inicializar DataTable:", error.message);
-    console.error("Error completo:", error);
-    // En caso de error, intentar limpiar y reinicializar
-    window.appStateStep3.dataTableInstance = null;
+
+    // Crear un nuevo div para los controles y agregarlo al contenedor
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'paginacion-controls';
+    controlsDiv.innerHTML = controlsHtml;
+    tablaContainer.appendChild(controlsDiv);
+
+    // Configurar el evento del selector de registros por página
+    const selector = document.getElementById('registros-por-pagina-cruce');
+    if (selector) {
+      selector.addEventListener('change', (e) => {
+        window.appStateStep3.paginacion.registrosPorPagina = parseInt(e.target.value);
+        window.appStateStep3.paginacion.paginaActual = 1;
+        window.appStateStep3.paginacion.totalPaginas = Math.ceil(
+          window.appStateStep3.datosFiltrados.length / window.appStateStep3.paginacion.registrosPorPagina
+        );
+        mostrarTablaCruce();
+        mostrarControlesPaginacionCruce();
+      });
+    }
   }
+}
+
+function irPaginaAnteriorCruce() {
+  if (window.appStateStep3.paginacion.paginaActual > 1) {
+    window.appStateStep3.paginacion.paginaActual--;
+    mostrarTablaCruce();
+    mostrarControlesPaginacionCruce();
+  }
+}
+
+function irPaginaSiguienteCruce() {
+  if (window.appStateStep3.paginacion.paginaActual < window.appStateStep3.paginacion.totalPaginas) {
+    window.appStateStep3.paginacion.paginaActual++;
+    mostrarTablaCruce();
+    mostrarControlesPaginacionCruce();
+  }
+}
+
+function generarTablaHtmlCruce(datos) {
+  if (!datos || datos.length === 0) {
+    return '<div class="text-center py-8 text-gray-500">No hay datos para mostrar en esta página</div>';
+  }
+
+  let html = `
+    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+      <table class="min-w-full bg-white border border-gray-300 rounded-lg">
+        <thead class="bg-gray-50 sticky top-0">
+          <tr>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WO</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">CLIENTE</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">TIPO</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">CANTIDAD</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WOQ CLIENTE</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">ESTADO CRUCE</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">APTO RPA</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WOQ CONTRATO</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WOQ ES CERRADO</th>
+            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">ACCIONES</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  datos.forEach((fila, index) => {
+    const estadoChip = generarChipEstadoCruce(fila.estado_cruce);
+    const rpaChip = generarChipAptoRPA(fila.apto_rpa);
+
+    html += `
+      <tr class="hover:bg-gray-50" data-index="${index}">
+        <td class="px-3 py-2 border-b text-xs">${fila.wo || ''}</td>
+        <td class="px-3 py-2 border-b text-xs">${fila.cliente || ''}</td>
+        <td class="px-3 py-2 border-b text-xs">${fila.tipo || ''}</td>
+        <td class="px-3 py-2 border-b text-xs text-center">${fila.cantidad || 0}</td>
+        <td class="px-3 py-2 border-b text-xs">${fila.woq_cliente || 'N/A'}</td>
+        <td class="px-3 py-2 border-b text-xs text-center">${estadoChip}</td>
+        <td class="px-3 py-2 border-b text-xs text-center">${rpaChip}</td>
+        <td class="px-3 py-2 border-b text-xs">${fila.woq_contrato || ''}</td>
+        <td class="px-3 py-2 border-b text-xs">${fila.woq_es_cerrado || ''}</td>
+        <td class="px-3 py-2 border-b text-xs">
+          <button onclick="verDetallesCruce(${index})" class="text-blue-600 hover:text-blue-800 text-xs">
+            👁️ Ver
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  return html;
 }
 
 function generarChipEstadoCruce(estado) {
@@ -543,7 +631,11 @@ function configurarFiltrosCruce() {
           </div>
           <div>
             <label class="form-label text-sm">Tipo</label>
-            <input type="text" id="filtro-tipo-cruce" placeholder="Filtrar por tipo..." class="form-input text-sm">
+            <select id="filtro-tipo-cruce" class="form-input text-sm">
+              <option value="">Todos</option>
+              <option value="AMCE">AMCE</option>
+              <option value="DMCE">DMCE</option>
+            </select>
           </div>
           <div>
             <label class="form-label text-sm">Estado Cruce</label>
@@ -588,7 +680,15 @@ function configurarFiltrosCruce() {
     const input = document.getElementById(`filtro-${filtro}`);
     if (input) {
       const tipoElemento = input.tagName.toLowerCase();
-      const nombreFiltro = filtro.replace('-cruce', '').replace('-', '_');
+      // Mapear correctamente los nombres de filtros
+      let nombreFiltro;
+      if (filtro === 'estado-cruce') {
+        nombreFiltro = 'estado_cruce';
+      } else if (filtro === 'apto-rpa') {
+        nombreFiltro = 'apto_rpa';
+      } else {
+        nombreFiltro = filtro.replace('-cruce', '');
+      }
       
       if (tipoElemento === 'select') {
         input.addEventListener('change', (e) => {
@@ -617,15 +717,18 @@ function aplicarFiltrosCruce() {
   const filtros = {
     wo: window.appStateStep3.filtrosActivos.wo.toLowerCase(),
     cliente: window.appStateStep3.filtrosActivos.cliente.toLowerCase(),
-    tipo: window.appStateStep3.filtrosActivos.tipo.toLowerCase(),
+    tipo: window.appStateStep3.filtrosActivos.tipo, // Sin toLowerCase para select
     estado_cruce: window.appStateStep3.filtrosActivos.estado_cruce,
     apto_rpa: window.appStateStep3.filtrosActivos.apto_rpa
   };
   
+  // Debug temporal
+  console.log('🔍 Filtros aplicados:', filtros);
+  
   const datosFiltrados = datosOriginales.filter(fila => {
     const cumpleWO = (fila.wo || '').toLowerCase().includes(filtros.wo);
     const cumpleCliente = (fila.cliente || '').toLowerCase().includes(filtros.cliente);
-    const cumpleTipo = (fila.tipo || '').toLowerCase().includes(filtros.tipo);
+    const cumpleTipo = filtros.tipo === '' || fila.tipo === filtros.tipo; // Comparación exacta para select
     const cumpleEstado = filtros.estado_cruce === '' || fila.estado_cruce === filtros.estado_cruce;
     const cumpleRPA = filtros.apto_rpa === '' || 
                       (filtros.apto_rpa === 'true' && fila.apto_rpa === true) ||
@@ -636,30 +739,16 @@ function aplicarFiltrosCruce() {
   
   window.appStateStep3.datosFiltrados = datosFiltrados;
   
-  // Actualizar DataTable
-  if (window.appStateStep3.dataTableInstance) {
-    window.appStateStep3.dataTableInstance.clear();
-    
-    datosFiltrados.forEach((row, index) => {
-      window.appStateStep3.dataTableInstance.row.add([
-        row.wo || '',
-        row.cliente || '',
-        row.tipo || '',
-        row.cantidad || 0,
-        row.woq_cliente || 'N/A',
-        generarChipEstadoCruce(row.estado_cruce),
-        generarChipAptoRPA(row.apto_rpa),
-        `<button onclick="verDetallesCruce(${index})" class="btn-icon btn-info" title="Ver detalles">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-          </svg>
-        </button>`
-      ]);
-    });
-    
-    window.appStateStep3.dataTableInstance.draw();
-  }
+  // Actualizar paginación
+  window.appStateStep3.paginacion.totalRegistros = datosFiltrados.length;
+  window.appStateStep3.paginacion.totalPaginas = Math.ceil(
+    datosFiltrados.length / window.appStateStep3.paginacion.registrosPorPagina
+  );
+  window.appStateStep3.paginacion.paginaActual = 1;
+  
+  // Mostrar tabla actualizada
+  mostrarTablaCruce();
+  mostrarControlesPaginacionCruce();
   
   actualizarContadorFiltrosCruce();
 }
@@ -688,10 +777,16 @@ function limpiarFiltrosCruce() {
   // Restaurar datos originales
   window.appStateStep3.datosFiltrados = [...(window.appStateStep3.datosCruzados || [])];
   
-  // Actualizar DataTable
-  if (window.appStateStep3.dataTableInstance) {
-    inicializarDataTableCruce(window.appStateStep3.datosFiltrados);
-  }
+  // Actualizar paginación
+  window.appStateStep3.paginacion.totalRegistros = window.appStateStep3.datosFiltrados.length;
+  window.appStateStep3.paginacion.totalPaginas = Math.ceil(
+    window.appStateStep3.datosFiltrados.length / window.appStateStep3.paginacion.registrosPorPagina
+  );
+  window.appStateStep3.paginacion.paginaActual = 1;
+  
+  // Mostrar tabla actualizada
+  mostrarTablaCruce();
+  mostrarControlesPaginacionCruce();
   
   actualizarContadorFiltrosCruce();
 }
@@ -846,50 +941,19 @@ function deshabilitarBotonCruce() {
 function exportarCruce() {
   console.log("📊 Iniciando exportación del cruce");
   
-  if (!window.appStateStep3.datosCruzados || window.appStateStep3.datosCruzados.length === 0) {
+  if (!window.appStateStep3.datosFiltrados || window.appStateStep3.datosFiltrados.length === 0) {
     alert("❌ No hay datos del cruce para exportar");
     return;
   }
-  
-  if (!window.pywebview || !window.pywebview.api) {
-    alert("❌ Función de exportación no disponible");
-    return;
-  }
-  
-  // Usar la función de exportación con ruta personalizada
-  window.pywebview.api.seleccionar_directorio_exportacion()
-    .then(respuesta => {
-      if (respuesta.success) {
-        const payload = {
-          datos: {
-            detalle: window.appStateStep3.datosCruzados,
-            estadisticas: window.appStateStep3.estadisticasCruce
-          },
-          carpeta_destino: respuesta.ruta
-        };
-        
-        return window.pywebview.api.exportar_excel_con_ruta(payload);
-      } else {
-        throw new Error(respuesta.message || "Selección cancelada");
-      }
-    })
-    .then(respuesta => {
-      if (respuesta && respuesta.success) {
-        alert(`✅ Cruce exportado exitosamente: ${respuesta.message}`);
-        // Opcional: abrir carpeta
-        if (window.pywebview.api.abrir_carpeta_archivo) {
-          window.pywebview.api.abrir_carpeta_archivo(respuesta.archivo);
-        }
-      } else {
-        throw new Error(respuesta?.message || "Error desconocido");
-      }
-    })
-    .catch(error => {
-      console.error('❌ Error al exportar cruce:', error);
-      if (error.message !== "Selección cancelada") {
-        alert('❌ Error al exportar el cruce: ' + error.message);
-      }
-    });
+
+  const datos = window.appStateStep3.datosFiltrados || [];
+
+  exportarExcel(
+    { detalle: datos },
+    "CrucePaso3.xlsx",
+    (resp) => console.log("✅ Exportación completada", resp),
+    (err) => console.error("❌ Error al exportar", err)
+  );
 }
 
 // ===================================================================
@@ -1015,10 +1079,17 @@ if (document.readyState === 'loading') {
 setTimeout(checkStep3PywebviewReady, 100);
 
 // Exponer funciones globales necesarias
-window.exportarCruce = exportarCruce;
 window.reiniciarSistema = reiniciarSistema;
 window.verDetallesCruce = verDetallesCruce;
 window.initializeStep3App = initializeStep3App;
+
+// ===================================================================
+// FUNCIONES GLOBALES PARA HTML ONCLICK
+// ===================================================================
+
+// Hacer las funciones de paginación accesibles globalmente
+window.irPaginaAnteriorCruce = irPaginaAnteriorCruce;
+window.irPaginaSiguienteCruce = irPaginaSiguienteCruce;
 
 console.log("📄 Step 3 JavaScript cargado completamente");
 

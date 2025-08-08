@@ -324,7 +324,7 @@ function inicializarDataTableRPA(data) {
       ],
       destroy: true,
       language: {
-        url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+        url: '/static/js/i18n/Spanish.json'
       },
       columnDefs: [
         { targets: '_all', className: 'text-center' },
@@ -910,4 +910,140 @@ const btnExportarRPA = document.getElementById('btn-exportar-rpa');
 if (btnExportarRPA) {
   btnExportarRPA.addEventListener('click', handleExportarExcelPaso4);
 }
+
+
+
+// ===================================================================
+// EXPORTACIÓN RPA
+// ===================================================================
+
+function exportarRPA() {
+  console.log("🚀 Iniciando exportación RPA...");
+  
+  if (!window.pywebview || !window.pywebview.api) {
+    console.error("❌ pywebview no está disponible para exportar RPA");
+    alert("❌ Error: La conexión con Python no está disponible para exportar");
+    mostrarStep4Loading(false);
+    return;
+  }
+  
+  // Obtener los datos filtrados para exportar
+  const datosParaExportar = window.appStateStep4.datosFiltrados;
+  
+  if (!datosParaExportar || datosParaExportar.length === 0) {
+    alert("⚠️ No hay datos para exportar.");
+    mostrarStep4Loading(false);
+    return;
+  }
+
+  window.pywebview.api.exportar_datos_rpa(datosParaExportar)
+    .then(respuesta => {
+      console.log("📥 Respuesta de exportación RPA recibida:", respuesta);
+      mostrarStep4Loading(false);
+      
+      if (respuesta.success) {
+        console.log("✅ Exportación RPA exitosa");
+        mostrarMensajeExitoStep4(`Exportación completada: ${respuesta.total_registros} registros exportados a ${respuesta.archivo}`);
+        // Opcional: deshabilitar botón de exportar hasta que se carguen nuevos datos
+        deshabilitarBotonExportar();
+        // Habilitar botón de finalizar
+        mostrarBotonFinalizar();
+      } else {
+        console.error("❌ Error en exportación RPA:", respuesta.message);
+        mostrarErrorStep4(respuesta.message || 'Error desconocido en la exportación RPA');
+      }
+    })
+    .catch(error => {
+      console.error("❌ ERROR al exportar RPA:", error);
+      mostrarStep4Loading(false);
+      mostrarErrorStep4("Error al exportar datos RPA: " + error.message);
+    });
+}
+
+// ===================================================================
+// UTILIDADES UI
+// ===================================================================
+
+function habilitarBotonExportar() {
+  const btnExportarRPA = document.getElementById("btn-exportar-rpa");
+  if (btnExportarRPA) {
+    btnExportarRPA.disabled = false;
+    btnExportarRPA.classList.remove("btn-disabled");
+  }
+}
+
+function deshabilitarBotonExportar() {
+  const btnExportarRPA = document.getElementById("btn-exportar-rpa");
+  if (btnExportarRPA) {
+    btnExportarRPA.disabled = true;
+    btnExportarRPA.classList.add("btn-disabled");
+  }
+}
+
+function mostrarBotonFinalizar() {
+  const btnFinalizar = document.getElementById("btn-finalizar");
+  if (btnFinalizar) {
+    btnFinalizar.style.display = "block";
+  }
+}
+
+function mostrarStep4Loading(mostrar) {
+  const loadingSpinner = document.getElementById("loading-spinner");
+  if (loadingSpinner) {
+    loadingSpinner.style.display = mostrar ? "block" : "none";
+  }
+  const btnExportarRPA = document.getElementById("btn-exportar-rpa");
+  if (btnExportarRPA) {
+    btnExportarRPA.disabled = mostrar;
+  }
+}
+
+function mostrarErrorStep4(mensaje) {
+  const errorDiv = document.getElementById("error-exportacion");
+  const errorMessageSpan = errorDiv ? errorDiv.querySelector(".error-message") : null;
+  if (errorDiv) {
+    errorDiv.style.display = "block";
+    if (errorMessageSpan) {
+      errorMessageSpan.textContent = mensaje;
+    }
+  }
+}
+
+function ocultarErrorStep4() {
+  const errorDiv = document.getElementById("error-exportacion");
+  if (errorDiv) {
+    errorDiv.style.display = "none";
+  }
+}
+
+function mostrarMensajeExitoStep4(mensaje) {
+  const successDiv = document.getElementById("success-exportacion");
+  const successMessageSpan = successDiv ? successDiv.querySelector(".success-message") : null;
+  if (successDiv) {
+    successDiv.style.display = "block";
+    if (successMessageSpan) {
+      successMessageSpan.textContent = mensaje;
+    }
+    setTimeout(() => {
+      successDiv.style.display = "none";
+    }, 5000); // Ocultar mensaje de éxito después de 5 segundos
+  }
+}
+
+// ===================================================================
+// INICIALIZACIÓN
+// ===================================================================
+
+document.addEventListener("DOMContentLoaded", initializeStep4App);
+
+function checkStep4PywebviewReady() {
+  if (window.pywebview && window.pywebview.api) {
+    window.appStateStep4.pywebviewReady = true;
+    console.log("✅ pywebview API lista en Step 4");
+  } else {
+    console.warn("⚠️ pywebview API no lista en Step 4, reintentando...");
+    setTimeout(checkStep4PywebviewReady, 100);
+  }
+}
+
 
