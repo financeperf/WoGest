@@ -1105,6 +1105,9 @@ function generarTablaHtml(datos) {
     const estadoChip = generarChipEstadoWoq(fila.es_cerrado || 'Desconocido');
     const clasesFila = fila.es_cerrado === 'NO' ? 'bg-yellow-50' : '';
 
+    // Calcular el índice global considerando la paginación
+    const indiceGlobal = (window.appStateStep2.paginacion.paginaActual - 1) * window.appStateStep2.paginacion.registrosPorPagina + index;
+
     html += `
       <tr class="hover:bg-gray-50 ${clasesFila}" data-index="${index}">
     `;
@@ -1136,7 +1139,7 @@ function generarTablaHtml(datos) {
     html += `
       <td class="px-3 py-2 border-b text-xs">
         <div class="flex space-x-2">
-          <button class="text-blue-600 hover:text-blue-800" onclick="verDetalleWoq(${index})" title="Ver detalle">
+          <button class="text-blue-600 hover:text-blue-800" onclick="verDetalleWoq(${indiceGlobal})" title="Ver detalle">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -1483,6 +1486,9 @@ function verDetalleWoq(index) {
 window.exportarExcel = () => {
   exportarExcel({ detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
 };
+
+// Hacer la función verDetalleWoq disponible globalmente para los botones HTML
+window.verDetalleWoq = verDetalleWoq;
 
 // Iniciar app al cargar
 document.addEventListener("DOMContentLoaded", initializeStep2App);

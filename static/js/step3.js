@@ -22,10 +22,10 @@ window.appStateStep3 = window.appStateStep3 || {
   estadisticasCruce: null,
   pywebviewReady: false,
   filtrosActivos: {
-    wo: '',
+    n_wo: '',
     cliente: '',
-    tipo: '',
-    estado_cruce: '',
+    contrato: '',
+    estado_paso1: '',
     apto_rpa: ''
   },
   datosFiltrados: [],
@@ -241,6 +241,18 @@ function actualizarEstadoUI(estadoGlobal) {
 function realizarCruceDatos() {
   console.log("🔍 Iniciando cruce de datos...");
   
+  // Actualizar estado del proceso
+  const estadoProceso = document.getElementById('estado-proceso');
+  if (estadoProceso) {
+    estadoProceso.textContent = "Realizando cruce de datos...";
+    estadoProceso.className = "text-blue-600";
+  }
+  
+  const estadoProcesoLateral = document.getElementById('estado-proceso-lateral');
+  if (estadoProcesoLateral) {
+    estadoProcesoLateral.textContent = "Realizando cruce de datos...";
+  }
+  
   if (!window.pywebview || !window.pywebview.api) {
     console.error("❌ pywebview no está disponible");
     alert("❌ Error: La conexión con Python no está disponible");
@@ -317,6 +329,9 @@ function mostrarResultadosCruce(resultado) {
 
   // Actualizar panel lateral
   actualizarPanelLateral(resultado.estadisticas);
+
+  // ✅ Actualizar estado del proceso
+  actualizarEstadoProceso(resultado.estadisticas);
 
   // ✅ Mostrar botón "Siguiente paso"
   mostrarBotonSiguiente();
@@ -400,6 +415,26 @@ function actualizarPanelLateral(estadisticas) {
   if (acciones) {
     acciones.style.display = 'block';
   }
+}
+
+function actualizarEstadoProceso(estadisticas) {
+  const totalCruzados = estadisticas.total_cruzados || 0;
+  const aptosRPA = estadisticas.aptos_rpa || 0;
+  
+  // Actualizar estado del proceso principal
+  const estadoProceso = document.getElementById('estado-proceso');
+  if (estadoProceso) {
+    estadoProceso.textContent = `${totalCruzados} registros cruzados, ${aptosRPA} aptos para RPA`;
+    estadoProceso.className = "text-green-600";
+  }
+  
+  // Actualizar estado del proceso lateral
+  const estadoProcesoLateral = document.getElementById('estado-proceso-lateral');
+  if (estadoProcesoLateral) {
+    estadoProcesoLateral.textContent = `${totalCruzados} registros cruzados, ${aptosRPA} aptos para RPA`;
+  }
+  
+  console.log("✅ Estado del proceso actualizado correctamente");
 }
 
 // ===================================================================
@@ -506,20 +541,86 @@ function generarTablaHtmlCruce(datos) {
     return '<div class="text-center py-8 text-gray-500">No hay datos para mostrar en esta página</div>';
   }
 
+  // Obtener todas las columnas disponibles del primer registro
+  const todasLasColumnas = Object.keys(datos[0]);
+  
+  // Debug: verificar qué columnas están llegando
+  console.log("🔍 Columnas disponibles:", todasLasColumnas);
+  console.log("🔍 ¿Tiene Estado_Paso1?", todasLasColumnas.includes('Estado_Paso1'));
+  console.log("🔍 ¿Tiene Apto RPA?", todasLasColumnas.includes('Apto RPA'));
+  
+  // Definir columnas principales que queremos mostrar primero (si existen)
+  const columnasPreferidas = [
+    'CONTRATO', 'N_WO', 'N°_WO', 'CLIENTE', 'DEALER', 
+    'STATUS1', 'STATUS2', 'CERRADO', 'F_SIST'
+  ];
+  
+  // Definir columnas que van al final (antes de Acciones)
+  const columnasFinales = [
+    'N_WO2', 'ORDEN_CONTRATO', 'es_cerrado', 'Estado_Paso1', 'Apto RPA'
+  ];
+  
+  // Crear lista ordenada: primero las preferidas, luego el resto, luego las finales
+  const columnasOrdenadas = [];
+  
+  // Agregar columnas preferidas que existan
+  columnasPreferidas.forEach(col => {
+    if (todasLasColumnas.includes(col)) {
+      columnasOrdenadas.push(col);
+    }
+  });
+  
+  // Agregar columnas restantes que no estén en preferidas ni finales
+  todasLasColumnas.forEach(col => {
+    if (!columnasPreferidas.includes(col) && !columnasFinales.includes(col)) {
+      columnasOrdenadas.push(col);
+    }
+  });
+  
+  // Agregar columnas finales que existan
+  columnasFinales.forEach(col => {
+    if (todasLasColumnas.includes(col)) {
+      columnasOrdenadas.push(col);
+    }
+  });
+
   let html = `
     <div class="overflow-x-auto max-h-96 overflow-y-auto">
       <table class="min-w-full bg-white border border-gray-300 rounded-lg">
         <thead class="bg-gray-50 sticky top-0">
           <tr>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WO</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">CLIENTE</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">TIPO</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">CANTIDAD</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WOQ CLIENTE</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">ESTADO CRUCE</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">APTO RPA</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WOQ CONTRATO</th>
-            <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">WOQ ES CERRADO</th>
+  `;
+
+  // Generar encabezados dinámicamente
+  columnasOrdenadas.forEach(col => {
+    // Nombres de columnas más legibles
+    let nombreColumna = col.toUpperCase();
+    switch(col) {
+      case 'N_WO': 
+      case 'N°_WO': 
+      case 'N_WO2': 
+        nombreColumna = col; 
+        break;
+      case 'ES_CERRADO':
+      case 'es_cerrado': 
+        nombreColumna = 'CERRADO'; 
+        break;
+      case 'ORDEN_CONTRATO':
+        nombreColumna = 'ORDEN CONTRATO'; 
+        break;
+      case 'Estado_Paso1': 
+        nombreColumna = 'ESTADO PASO 1'; 
+        break;
+      case 'Apto RPA': 
+        nombreColumna = 'APTO RPA'; 
+        break;
+      default: 
+        nombreColumna = col.replace(/_/g, ' ');
+    }
+    html += `<th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">${nombreColumna}</th>`;
+  });
+  
+  html += `
             <th class="px-3 py-2 border-b text-left text-xs font-medium text-gray-700">ACCIONES</th>
           </tr>
         </thead>
@@ -527,26 +628,39 @@ function generarTablaHtmlCruce(datos) {
   `;
 
   datos.forEach((fila, index) => {
-    const estadoChip = generarChipEstadoCruce(fila.estado_cruce);
-    const rpaChip = generarChipAptoRPA(fila.apto_rpa);
-
+    html += `<tr class="hover:bg-gray-50" data-index="${index}">`;
+    
+    // Generar celdas dinámicamente
+    columnasOrdenadas.forEach(col => {
+      let valor = fila[col] !== undefined && fila[col] !== null ? fila[col] : '';
+      
+      // Formatear valores especiales
+      if (col === 'Apto RPA') {
+        html += `<td class="px-3 py-2 border-b text-xs text-center">${generarChipAptoRPA(valor)}</td>`;
+      } else if (col === 'Estado_Paso1') {
+        const estadoChip = generarChipEstadoPaso1(valor);
+        html += `<td class="px-3 py-2 border-b text-xs text-center">${estadoChip}</td>`;
+      } else if (col === 'ES_CERRADO' || col === 'es_cerrado') {
+        const cerradoChip = generarChipCerrado(valor);
+        html += `<td class="px-3 py-2 border-b text-xs text-center">${cerradoChip}</td>`;
+      } else if (col === 'N_WO2' || col === 'ORDEN_CONTRATO') {
+        // Mostrar estos campos importantes sin formateo especial
+        html += `<td class="px-3 py-2 border-b text-xs">${valor || 'N/A'}</td>`;
+      } else {
+        // Formatear valor según su tipo
+        const valorFormateado = formatearValorCruce(valor, col);
+        html += `<td class="px-3 py-2 border-b text-xs">${valorFormateado}</td>`;
+      }
+    });
+    
+    // Agregar columna de acciones
     html += `
-      <tr class="hover:bg-gray-50" data-index="${index}">
-        <td class="px-3 py-2 border-b text-xs">${fila.wo || ''}</td>
-        <td class="px-3 py-2 border-b text-xs">${fila.cliente || ''}</td>
-        <td class="px-3 py-2 border-b text-xs">${fila.tipo || ''}</td>
-        <td class="px-3 py-2 border-b text-xs text-center">${fila.cantidad || 0}</td>
-        <td class="px-3 py-2 border-b text-xs">${fila.woq_cliente || 'N/A'}</td>
-        <td class="px-3 py-2 border-b text-xs text-center">${estadoChip}</td>
-        <td class="px-3 py-2 border-b text-xs text-center">${rpaChip}</td>
-        <td class="px-3 py-2 border-b text-xs">${fila.woq_contrato || ''}</td>
-        <td class="px-3 py-2 border-b text-xs">${fila.woq_es_cerrado || ''}</td>
-        <td class="px-3 py-2 border-b text-xs">
-          <button onclick="verDetallesCruce(${index})" class="text-blue-600 hover:text-blue-800 text-xs">
-            👁️ Ver
-          </button>
-        </td>
-      </tr>
+      <td class="px-3 py-2 border-b text-xs">
+        <button onclick="verDetallesCruce(${index})" class="text-blue-600 hover:text-blue-800 text-xs">
+          👁️ Ver
+        </button>
+      </td>
+    </tr>
     `;
   });
 
@@ -557,6 +671,52 @@ function generarTablaHtmlCruce(datos) {
   `;
 
   return html;
+}
+
+// Función helper para formatear valores
+function formatearValorCruce(valor, columna) {
+  if (valor === null || valor === undefined || valor === '') return '';
+  
+  // Formateo específico según el tipo de columna
+  switch(columna) {
+    case 'CONTRATO':
+    case 'N_WO':
+    case 'N°_WO':
+    case 'N_WO2':
+      return `<span class="font-semibold">${valor}</span>`;
+    default:
+      return String(valor);
+  }
+}
+
+// Función helper para generar chip de estado del Paso 1
+function generarChipEstadoPaso1(estado) {
+  if (!estado) return '<span class="chip chip-neutral">Sin estado</span>';
+  
+  switch(String(estado).toLowerCase()) {
+    case 'correcto':
+      return '<span class="chip chip-success">✅ Correcto</span>';
+    case 'error':
+      return '<span class="chip chip-danger">❌ Error</span>';
+    case 'advertencia':
+      return '<span class="chip chip-warning">⚠️ Advertencia</span>';
+    default:
+      return `<span class="chip chip-neutral">${estado}</span>`;
+  }
+}
+
+// Función helper para generar chip de cerrado
+function generarChipCerrado(valor) {
+  if (!valor) return '<span class="chip chip-neutral">No definido</span>';
+  
+  const valorStr = String(valor).toUpperCase();
+  if (['SI', 'SÍ', 'TRUE', '1', 'YES'].includes(valorStr)) {
+    return '<span class="chip chip-success">🔒 Cerrado</span>';
+  } else if (['NO', 'FALSE', '0'].includes(valorStr)) {
+    return '<span class="chip chip-warning">🔓 Abierto</span>';
+  }
+  
+  return `<span class="chip chip-neutral">${valor}</span>`;
 }
 
 function generarChipEstadoCruce(estado) {
@@ -580,15 +740,10 @@ function generarChipEstadoCruce(estado) {
   </span>`;
 }
 
-function generarChipAptoRPA(apto) {
-  const esApto = apto === true;
-  const clase = esApto ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800';
-  const icono = esApto ? '🤖' : '🚫';
-  const texto = esApto ? 'Sí' : 'No';
-  
-  return `<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${clase}">
-    ${icono} ${texto}
-  </span>`;
+function generarChipAptoRPA(valor) {
+  if (valor === "SÍ") return `<span class="chip chip-blue">🤖 SÍ</span>`;
+  if (valor === "NO") return `<span class="chip chip-gray">🚫 NO</span>`;
+  return `<span class="chip chip-neutral">❓ NULL</span>`;
 }
 
 // ===================================================================
@@ -622,36 +777,33 @@ function configurarFiltrosCruce() {
       <div class="card-body">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
           <div>
-            <label class="form-label text-sm">WO</label>
-            <input type="text" id="filtro-wo-cruce" placeholder="Filtrar por WO..." class="form-input text-sm">
+            <label class="form-label text-sm">N° WO</label>
+            <input type="text" id="filtro-n-wo" placeholder="Filtrar por N° WO..." class="form-input text-sm">
           </div>
           <div>
             <label class="form-label text-sm">Cliente</label>
-            <input type="text" id="filtro-cliente-cruce" placeholder="Filtrar por cliente..." class="form-input text-sm">
+            <input type="text" id="filtro-cliente" placeholder="Filtrar por cliente..." class="form-input text-sm">
           </div>
           <div>
-            <label class="form-label text-sm">Tipo</label>
-            <select id="filtro-tipo-cruce" class="form-input text-sm">
-              <option value="">Todos</option>
-              <option value="AMCE">AMCE</option>
-              <option value="DMCE">DMCE</option>
-            </select>
+            <label class="form-label text-sm">Contrato</label>
+            <input type="text" id="filtro-contrato" placeholder="Filtrar por contrato..." class="form-input text-sm">
           </div>
           <div>
-            <label class="form-label text-sm">Estado Cruce</label>
-            <select id="filtro-estado-cruce" class="form-input text-sm">
+            <label class="form-label text-sm">Estado Paso 1</label>
+            <select id="filtro-estado-paso1" class="form-input text-sm">
               <option value="">Todos</option>
-              <option value="Pendiente">Pendiente</option>
-              <option value="Cerrado">Cerrado</option>
-              <option value="Sin WOQ">Sin WOQ</option>
+              <option value="Correcto">Correcto</option>
+              <option value="Error">Error</option>
+              <option value="Advertencia">Advertencia</option>
             </select>
           </div>
           <div>
             <label class="form-label text-sm">Apto RPA</label>
             <select id="filtro-apto-rpa" class="form-input text-sm">
               <option value="">Todos</option>
-              <option value="true">Sí</option>
-              <option value="false">No</option>
+              <option value="SÍ">Sí</option>
+              <option value="NO">No</option>
+              <option value="NULL">Sin evaluación</option>
             </select>
           </div>
         </div>
@@ -673,31 +825,28 @@ function configurarFiltrosCruce() {
     }
   }
   
-  // Configurar eventos de filtros
-  const campos = ['wo-cruce', 'cliente-cruce', 'tipo-cruce', 'estado-cruce', 'apto-rpa'];
+  // Configurar eventos de filtros con los nuevos campos
+  const filtros = [
+    { id: 'filtro-n-wo', key: 'n_wo' },
+    { id: 'filtro-cliente', key: 'cliente' },
+    { id: 'filtro-contrato', key: 'contrato' },
+    { id: 'filtro-estado-paso1', key: 'estado_paso1' },
+    { id: 'filtro-apto-rpa', key: 'apto_rpa' }
+  ];
   
-  campos.forEach(filtro => {
-    const input = document.getElementById(`filtro-${filtro}`);
+  filtros.forEach(filtroConfig => {
+    const input = document.getElementById(filtroConfig.id);
     if (input) {
       const tipoElemento = input.tagName.toLowerCase();
-      // Mapear correctamente los nombres de filtros
-      let nombreFiltro;
-      if (filtro === 'estado-cruce') {
-        nombreFiltro = 'estado_cruce';
-      } else if (filtro === 'apto-rpa') {
-        nombreFiltro = 'apto_rpa';
-      } else {
-        nombreFiltro = filtro.replace('-cruce', '');
-      }
       
       if (tipoElemento === 'select') {
         input.addEventListener('change', (e) => {
-          window.appStateStep3.filtrosActivos[nombreFiltro] = e.target.value;
+          window.appStateStep3.filtrosActivos[filtroConfig.key] = e.target.value;
           aplicarFiltrosCruce();
         });
       } else {
         input.addEventListener('input', (e) => {
-          window.appStateStep3.filtrosActivos[nombreFiltro] = e.target.value;
+          window.appStateStep3.filtrosActivos[filtroConfig.key] = e.target.value;
           aplicarFiltrosCruce();
         });
       }
@@ -715,26 +864,41 @@ function aplicarFiltrosCruce() {
   const datosOriginales = window.appStateStep3.datosCruzados || [];
   
   const filtros = {
-    wo: window.appStateStep3.filtrosActivos.wo.toLowerCase(),
-    cliente: window.appStateStep3.filtrosActivos.cliente.toLowerCase(),
-    tipo: window.appStateStep3.filtrosActivos.tipo, // Sin toLowerCase para select
-    estado_cruce: window.appStateStep3.filtrosActivos.estado_cruce,
-    apto_rpa: window.appStateStep3.filtrosActivos.apto_rpa
+    n_wo: (window.appStateStep3.filtrosActivos.n_wo || '').toLowerCase(),
+    cliente: (window.appStateStep3.filtrosActivos.cliente || '').toLowerCase(),
+    contrato: (window.appStateStep3.filtrosActivos.contrato || '').toLowerCase(),
+    estado_paso1: window.appStateStep3.filtrosActivos.estado_paso1 || '',
+    apto_rpa: window.appStateStep3.filtrosActivos.apto_rpa || ''
   };
   
-  // Debug temporal
   console.log('🔍 Filtros aplicados:', filtros);
   
   const datosFiltrados = datosOriginales.filter(fila => {
-    const cumpleWO = (fila.wo || '').toLowerCase().includes(filtros.wo);
-    const cumpleCliente = (fila.cliente || '').toLowerCase().includes(filtros.cliente);
-    const cumpleTipo = filtros.tipo === '' || fila.tipo === filtros.tipo; // Comparación exacta para select
-    const cumpleEstado = filtros.estado_cruce === '' || fila.estado_cruce === filtros.estado_cruce;
-    const cumpleRPA = filtros.apto_rpa === '' || 
-                      (filtros.apto_rpa === 'true' && fila.apto_rpa === true) ||
-                      (filtros.apto_rpa === 'false' && fila.apto_rpa === false);
+    // Buscar N° WO en varios campos posibles
+    const nWoText = [
+      fila['N_WO'], fila['N°_WO'], fila['N_WO2']
+    ].filter(Boolean).join(' ').toLowerCase();
+    const cumpleNWO = filtros.n_wo === '' || nWoText.includes(filtros.n_wo);
     
-    return cumpleWO && cumpleCliente && cumpleTipo && cumpleEstado && cumpleRPA;
+    // Buscar cliente en campos de cliente
+    const clienteText = [
+      fila['CLIENTE'], fila['Cliente']
+    ].filter(Boolean).join(' ').toLowerCase();
+    const cumpleCliente = filtros.cliente === '' || clienteText.includes(filtros.cliente);
+    
+    // Buscar contrato
+    const contratoText = (fila['CONTRATO'] || '').toString().toLowerCase();
+    const cumpleContrato = filtros.contrato === '' || contratoText.includes(filtros.contrato);
+    
+    // Filtrar por Estado Paso 1
+    const cumpleEstadoPaso1 = filtros.estado_paso1 === '' || 
+      (fila['Estado_Paso1'] === filtros.estado_paso1);
+    
+    // Filtrar por Apto RPA
+    const cumpleRPA = filtros.apto_rpa === '' ||
+      (((fila['Apto RPA'] ?? '').toString().toUpperCase() || 'NULL') === filtros.apto_rpa.toUpperCase());
+    
+    return cumpleNWO && cumpleCliente && cumpleContrato && cumpleEstadoPaso1 && cumpleRPA;
   });
   
   window.appStateStep3.datosFiltrados = datosFiltrados;
@@ -750,20 +914,26 @@ function aplicarFiltrosCruce() {
   mostrarTablaCruce();
   mostrarControlesPaginacionCruce();
   
+  // Actualizar contador
+  const contador = document.getElementById('contador-filtrados-cruce');
+  if (contador) {
+    contador.textContent = `${datosFiltrados.length} registros mostrados`;
+  }
+  
   actualizarContadorFiltrosCruce();
 }
 
 function limpiarFiltrosCruce() {
   window.appStateStep3.filtrosActivos = {
-    wo: '',
+    n_wo: '',
     cliente: '',
-    tipo: '',
-    estado_cruce: '',
+    contrato: '',
+    estado_paso1: '',
     apto_rpa: ''
   };
   
-  // Limpiar inputs
-  ['wo-cruce', 'cliente-cruce', 'tipo-cruce', 'estado-cruce', 'apto-rpa'].forEach(filtro => {
+  // Limpiar inputs con los nuevos IDs
+  ['n-wo', 'cliente', 'contrato', 'estado-paso1', 'apto-rpa'].forEach(filtro => {
     const input = document.getElementById(`filtro-${filtro}`);
     if (input) {
       if (input.tagName === 'SELECT') {
@@ -804,52 +974,67 @@ function actualizarContadorFiltrosCruce() {
 
 function verDetallesCruce(index) {
   const registro = window.appStateStep3.datosFiltrados[index];
-
   if (!registro) return;
 
+  // Crear contenido de modal con todos los datos del registro
+  let contenidoHtml = `<div class="p-4">`;
+  
+  // Cabecera con datos principales
+  contenidoHtml += `
+    <div class="mb-4 pb-3 border-b">
+      <h3 class="text-lg font-bold">Detalle del Registro del Paso 3</h3>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <span class="badge badge-info">Contrato: ${registro.CONTRATO || 'N/A'}</span>
+        <span class="badge badge-info">N° WO: ${registro.N_WO || registro['N°_WO'] || registro.N_WO2 || 'N/A'}</span>
+        <span class="badge ${registro['Apto RPA'] === 'SÍ' ? 'badge-success' : registro['Apto RPA'] === 'NO' ? 'badge-warning' : 'badge-neutral'}">
+          ${registro['Apto RPA'] || 'Sin evaluación'}
+        </span>
+      </div>
+    </div>
+  `;
+  
+  // Tabla con todos los datos
+  contenidoHtml += `<div class="overflow-x-auto">
+    <table class="min-w-full">
+      <thead>
+        <tr>
+          <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider py-2">Campo</th>
+          <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider py-2">Valor</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+      // Mostrar todos los campos del registro
+      for (const clave in registro) {
+        let valor = registro[clave];
+        if (valor === null || valor === undefined) {
+          valor = 'N/A';
+        }
+        
+        contenidoHtml += `
+          <tr>
+            <td class="py-2 font-medium">${clave}</td>
+            <td class="py-2">${valor}</td>
+          </tr>
+        `;
+      }
+
+      contenidoHtml += `
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // Crear y mostrar modal
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
   modal.innerHTML = `
     <div class="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-96 overflow-y-auto">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">Detalles del Registro Cruzado</h3>
+        <h3 class="text-lg font-semibold">Detalles del Registro del Cruce</h3>
         <button onclick="cerrarModalCruce()" class="text-gray-500 hover:text-gray-700">✕</button>
       </div>
-      <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-6">
-          <div class="border-r pr-6">
-            <h4 class="font-semibold text-gray-800 mb-3">Datos del Paso 1 (WorkOrder)</h4>
-            <div class="space-y-2 text-sm">
-              <div><strong>WO:</strong> ${registro.wo || 'N/A'}</div>
-              <div><strong>MANT:</strong> ${registro.mant || 'N/A'}</div>
-              <div><strong>CLIENTE:</strong> ${registro.cliente || 'N/A'}</div>
-              <div><strong>REFERENCIA:</strong> ${registro.referencia || 'N/A'}</div>
-              <div><strong>TIPO:</strong> ${registro.tipo || 'N/A'}</div>
-              <div><strong>CANTIDAD:</strong> ${registro.cantidad || 0}</div>
-              <div><strong>ESTADO:</strong> ${registro.estado || 'N/A'}</div>
-            </div>
-          </div>
-          <div class="pl-6">
-            <h4 class="font-semibold text-gray-800 mb-3">Datos del Paso 2 (WOQ)</h4>
-            <div class="space-y-2 text-sm">
-              <div><strong>CONTRATO:</strong> ${registro.woq_contrato || 'N/A'}</div>
-              <div><strong>N° WO:</strong> ${registro.woq_n_wo || 'N/A'}</div>
-              <div><strong>CLIENTE WOQ:</strong> ${registro.woq_cliente || 'N/A'}</div>
-              <div><strong>ORDEN:</strong> ${registro.woq_orden || 'N/A'}</div>
-              <div><strong>CERRADO:</strong> ${registro.woq_cerrado || 'N/A'}</div>
-              <div><strong>ES CERRADO:</strong> ${registro.woq_es_cerrado ? 'Sí' : 'No'}</div>
-            </div>
-          </div>
-        </div>
-        <div class="border-t pt-4">
-          <h4 class="font-semibold text-gray-800 mb-3">Resultado del Cruce</h4>
-          <div class="grid grid-cols-3 gap-4 text-sm">
-            <div><strong>ESTADO CRUCE:</strong> ${generarChipEstadoCruce(registro.estado_cruce)}</div>
-            <div><strong>APTO RPA:</strong> ${generarChipAptoRPA(registro.apto_rpa)}</div>
-            <div><strong>OBSERVACIONES:</strong> ${registro.observaciones || 'Sin observaciones'}</div>
-          </div>
-        </div>
-      </div>
+      ${contenidoHtml}
       <div class="mt-6 flex justify-end">
         <button onclick="cerrarModalCruce()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
           Cerrar
@@ -857,7 +1042,7 @@ function verDetallesCruce(index) {
       </div>
     </div>
   `;
-
+  
   document.body.appendChild(modal);
 
   window.cerrarModalCruce = function() {
@@ -923,6 +1108,12 @@ function mostrarBotonSiguiente() {
   const btnSiguiente = document.getElementById('btn-siguiente');
   if (btnSiguiente) {
     btnSiguiente.style.display = 'inline-block';
+    btnSiguiente.style.visibility = 'visible';
+    btnSiguiente.disabled = false;
+    
+    console.log("✅ Botón 'Siguiente paso' habilitado y mostrado");
+  } else {
+    console.warn("⚠️ No se encontró el botón 'btn-siguiente'");
   }
 }
 

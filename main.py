@@ -92,6 +92,11 @@ def step3():
     logger.info("Renderizando step3.html")
     return template('components/step3.html')
 
+@app_web.route('/step4') # type: ignore
+def step4():
+    logger.info("Renderizando step4.html")
+    return template('components/step4.html')
+
 @app_web.route('/static/<filepath:path>')# type: ignore
 def serve_static(filepath):
     logger.debug(f"Sirviendo archivo estático: {filepath}")
@@ -574,94 +579,16 @@ class WOGestAPI:
             
             logger.info(f"📊 Datos paso1: {len(df1)} registros, paso2: {len(df2)} registros")
             
-            # Realizar cruce por WO
-            # Asegurar que las columnas de cruce sean string para evitar problemas
-            df1['wo_key'] = df1['wo'].astype(str).str.strip().str.upper()
-            df2['wo_key'] = df2['N_WO'].astype(str).str.strip().str.upper() if 'N_WO' in df2.columns else ""
-            
-            # Merge de los DataFrames
-            df_cruzado = df1.merge(
-                df2, 
-                left_on='wo_key', 
-                right_on='wo_key', 
-                how='left', 
-                suffixes=('', '_woq')
-            )
-            
-            # Determinar estado del cruce y apto RPA
-            datos_cruzados = []
-            estadisticas = {
-                "total_cruzados": len(df_cruzado),
-                "cerrados": 0,
-                "pendientes_cierre": 0,
-                "sin_woq": 0,
-                "aptos_rpa": 0,
-                "porcentaje_cruce": 0
-            }
-            
-            for _, row in df_cruzado.iterrows():
-                # Determinar estado del cruce
-                tiene_woq = pd.notna(row.get('CONTRATO', None)) and str(row.get('CONTRATO', '')).strip() != ''
-                
-                if not tiene_woq:
-                    estado_cruce = "Sin WOQ"
-                    estadisticas["sin_woq"] += 1
-                else:
-                    # Verificar si está cerrado en WOQ
-                    es_cerrado = row.get('es_cerrado', 'NO')
-                    if str(es_cerrado).upper() in ['SI', 'SÍ', 'TRUE', '1']:
-                        estado_cruce = "Cerrado"
-                        estadisticas["cerrados"] += 1
-                    else:
-                        estado_cruce = "Pendiente"
-                        estadisticas["pendientes_cierre"] += 1
-                
-                # Determinar si es apto para RPA
-                apto_rpa = tiene_woq and estado_cruce == "Pendiente"
-                if apto_rpa:
-                    estadisticas["aptos_rpa"] += 1
-                
-                # Crear registro cruzado
-                registro = {
-                    # Datos del paso 1 (WorkOrder)
-                    "wo": str(row.get('wo', '')),
-                    "cliente": str(row.get('cliente', '')),
-                    "tipo": str(row.get('tipo', '')),
-                    "cantidad": int(row.get('cantidad', 0)) if pd.notna(row.get('cantidad', 0)) else 0,
-                    "estado": str(row.get('estado', '')),
-                    "mant": str(row.get('mant', '')),
-                    "referencia": str(row.get('referencia', '')),
-                    
-                    # Datos del paso 2 (WOQ) con prefijo woq_
-                    "woq_contrato": str(row.get('CONTRATO', '')) if tiene_woq else '',
-                    "woq_n_wo": str(row.get('N_WO', '')) if tiene_woq else '',
-                    "woq_cliente": str(row.get('CLIENTE', '')) if tiene_woq else '',
-                    "woq_orden": str(row.get('ORDEN_CONTRATO', '')) if tiene_woq else '',
-                    "woq_cerrado": str(row.get('CERRADO', '')) if tiene_woq else '',
-                    "woq_es_cerrado": str(row.get('es_cerrado', '')) if tiene_woq else '',
-                    
-                    # Resultado del cruce
-                    "estado_cruce": estado_cruce,
-                    "apto_rpa": apto_rpa,
-                    "observaciones": f"Cruce {'exitoso' if tiene_woq else 'sin coincidencia'}"
-                }
-                
-                datos_cruzados.append(registro)
-            
-            # Calcular porcentaje de cruce
-            if estadisticas["total_cruzados"] > 0:
-                registros_con_woq = estadisticas["total_cruzados"] - estadisticas["sin_woq"]
-                estadisticas["porcentaje_cruce"] = round((registros_con_woq / estadisticas["total_cruzados"]) * 100, 1)
-            
-            logger.info(f"✅ Cruce completado: {len(datos_cruzados)} registros procesados")
-            logger.info(f"📊 Estadísticas: {estadisticas}")
-            
-            return {
-                "success": True,
-                "datos_cruzados": datos_cruzados,
-                "estadisticas": estadisticas,
-                "message": f"Cruce realizado exitosamente: {len(datos_cruzados)} registros procesados"
-            }
+            # ✅ Delegar al Paso 3 real (paso3.py) para mantener estructura Paso 2 + columnas nuevas
+            from procesamiento.paso3 import realizar_cruce_datos as cruce_p3
+
+            datos_paso1 = df1.to_dict(orient="records")
+            datos_paso2 = df2.to_dict(orient="records")
+
+            resultado = cruce_p3(datos_paso1, datos_paso2)
+
+            # Retornar tal cual lo que define paso3.py
+            return resultado
             
         except Exception as e:
             logger.exception("❌ Error en realizar_cruce_datos")

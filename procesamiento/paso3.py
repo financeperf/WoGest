@@ -26,163 +26,100 @@ logger = logging.getLogger(__name__)
 
 def realizar_cruce_datos(datos_paso1: List[Dict], datos_paso2: List[Dict]) -> Dict[str, Any]:
     """
-    Realiza el cruce de datos entre Paso 1 (renovaciones) y Paso 2 (WOQ)
-    
-    Args:
-        datos_paso1: Lista de registros validados del Paso 1
-        datos_paso2: Lista de registros procesados del Paso 2
-        
-    Returns:
-        Diccionario con resultados del cruce y estadísticas
+    NUEVA LÓGICA PASO 3:
+    - Base = TODOS los registros del Paso 2 (mismo orden de columnas).
+    - Columnas nuevas al final: 'Estado_Paso1' y 'Apto RPA'.
+    - Estadísticas: total_paso2, aptos_rpa, no_aptos, no_cruce, porcentaje_aptos.
+    - No añade campos extra (wo, woq_*, estado_cruce, etc.).
     """
     try:
-        logger.info("🔍 Iniciando cruce de datos...")
-        
-        if not datos_paso1 or not datos_paso2:
-            return {
-                'success': False,
-                'message': 'No hay datos suficientes para realizar el cruce'
-            }
-        
-        # Filtrar solo registros correctos del Paso 1
-        registros_paso1_correctos = [
-            r for r in datos_paso1 
-            if r.get('estado', '').lower() == 'correcto'
-        ]
-        
-        if not registros_paso1_correctos:
-            return {
-                'success': False,
-                'message': 'No hay registros correctos en el Paso 1 para cruzar'
-            }
-        
-        # Crear índice hash para búsqueda eficiente en datos del Paso 2
-        # Normalizar claves para búsqueda (convertir a string y limpiar)
-        indice_woq = {}
-        for registro in datos_paso2:
-            # Intentar diferentes campos que podrían contener el número de WO
-            wo_numero = None
-            for campo in ['N_WO', 'n_wo', 'N°_WO', 'wo', 'WO']:
-                if campo in registro and registro[campo]:
-                    wo_numero = str(registro[campo]).strip()
-                    break
-            
-            if wo_numero:
-                indice_woq[wo_numero] = registro
-        
-        logger.info(f"📊 Índice WOQ creado con {len(indice_woq)} registros")
-        
-        datos_cruzados = []
-        estadisticas = {
-            'total_paso1': len(registros_paso1_correctos),
-            'total_cruzados': 0,
-            'pendientes_cierre': 0,
-            'cerrados': 0,
-            'sin_woq': 0,
-            'aptos_rpa': 0
-        }
-        
-        # Procesar cada registro del Paso 1
-        for registro_wo in registros_paso1_correctos:
-            # Obtener número de WO del registro del Paso 1
-            wo_numero = None
-            for campo in ['wo', 'WO', 'n_wo', 'N_WO']:
-                if campo in registro_wo and registro_wo[campo]:
-                    wo_numero = str(registro_wo[campo]).strip()
-                    break
-            
-            if not wo_numero:
-                logger.warning(f"⚠️ Registro sin número de WO: {registro_wo}")
-                continue
-            
-            # Buscar correspondencia en WOQ
-            registro_woq = indice_woq.get(wo_numero)
-            
-            if registro_woq:
-                # Registro encontrado en WOQ
-                es_cerrado = registro_woq.get('ES_CERRADO', False)
-                estado_cruce = 'Cerrado' if es_cerrado else 'Pendiente'
-                apto_rpa = not es_cerrado  # Solo pendientes son aptos para RPA
-                
-                registro_cruzado = {
-                    # Datos del WorkOrder (Paso 1)
-                    **registro_wo,
-                    
-                    # Datos del WOQ (Paso 2) con prefijo para evitar conflictos
-                    'woq_contrato': registro_woq.get('CONTRATO', ''),
-                    'woq_n_wo': registro_woq.get('N_WO', ''),
-                    'woq_cliente': registro_woq.get('CLIENTE', ''),
-                    'woq_dealer': registro_woq.get('DEALER', ''),
-                    'woq_status1': registro_woq.get('STATUS1', ''),
-                    'woq_status2': registro_woq.get('STATUS2', ''),
-                    'woq_cerrado': registro_woq.get('CERRADO', ''),
-                    'woq_es_cerrado': es_cerrado,
-                    'woq_f_sist': registro_woq.get('F_SIST', ''),
-                    'woq_orden_contrato': registro_woq.get('ORDEN_CONTRATO', ''),
-                    
-                    # Campos de cruce
-                    'estado_cruce': estado_cruce,
-                    'apto_rpa': apto_rpa,
-                    'timestamp_cruce': datetime.now().isoformat(),
-                    'confianza_correlacion': 1.0  # Correlación exacta por WO
-                }
-                
-                datos_cruzados.append(registro_cruzado)
-                estadisticas['total_cruzados'] += 1
-                
-                if es_cerrado:
-                    estadisticas['cerrados'] += 1
+        logger.info("🔍 Paso 3 (base en Paso 2) — iniciando cruce")
+        if not datos_paso2:
+            return {"success": False, "message": "No hay datos del Paso 2"}
+
+        from collections import OrderedDict
+
+        # Normalizador de WO
+        def _norm_wo(v):
+            return str(v).strip().upper() if v is not None else ""
+
+        # Índices desde Paso 1
+        wos_p1_correctos = set()
+        estado_por_wo = {}
+        for r in (datos_paso1 or []):
+            # Capturar estado por WO (aunque no sea 'Correcto', para mostrar en 'Estado_Paso1')
+            wo = None
+            for k in ('wo', 'WO', 'N_WO', 'N°_WO', 'N_WO2'):
+                if k in r and r[k]:
+                    wo = r[k]; break
+            if wo is not None:
+                wo_n = _norm_wo(wo)
+                estado_por_wo[wo_n] = r.get('estado')
+                if str(r.get('estado', '')).strip().lower() == 'correcto':
+                    wos_p1_correctos.add(wo_n)
+
+        # Helper: determinar si Paso 2 está cerrado
+        def _esta_cerrado(reg):
+            v = reg.get('ES_CERRADO', reg.get('es_cerrado', None))
+            if isinstance(v, bool):
+                return v
+            if v is None:
+                return False
+            return str(v).strip().upper() in ('SI', 'SÍ', 'TRUE', '1', 'YES')
+
+        # Orden exacto de columnas del Paso 2 (1–27) excluyendo 'id' técnico de SQLite
+        columnas_p2 = [c for c in list(datos_paso2[0].keys()) if c.lower() != 'id']
+
+        resultado: List[Dict[str, Any]] = []
+        aptos = no_aptos = no_cruce = 0
+
+        for row in datos_paso2:
+            # Copia 1:1 de la fila del Paso 2 en el MISMO ORDEN
+            fila = OrderedDict((k, row.get(k)) for k in columnas_p2)
+
+            # WO de la fila del Paso 2
+            wo_p2 = None
+            for k in ('N°_WO', 'N_WO', 'N_WO2', 'WO', 'wo'):
+                if k in row and row[k]:
+                    wo_p2 = row[k]; break
+            wo_key = _norm_wo(wo_p2)
+
+            # Columna 28: Estado_Paso1
+            fila["Estado_Paso1"] = estado_por_wo.get(wo_key, None)
+
+            # Columna 29: Apto RPA
+            if wo_key and wo_key in wos_p1_correctos:
+                if _esta_cerrado(row):
+                    fila["Apto RPA"] = "NO"
+                    no_aptos += 1
                 else:
-                    estadisticas['pendientes_cierre'] += 1
-                    estadisticas['aptos_rpa'] += 1
-                    
+                    fila["Apto RPA"] = "SÍ"
+                    aptos += 1
             else:
-                # Registro sin WOQ correspondiente
-                registro_cruzado = {
-                    **registro_wo,
-                    'estado_cruce': 'Sin WOQ',
-                    'apto_rpa': False,
-                    'timestamp_cruce': datetime.now().isoformat(),
-                    'confianza_correlacion': 0.0
-                }
-                datos_cruzados.append(registro_cruzado)
-                estadisticas['sin_woq'] += 1
+                fila["Apto RPA"] = None
+                no_cruce += 1
+
+            resultado.append(fila)
+
+        total = len(datos_paso2)
         
-        # Calcular porcentajes
-        if estadisticas['total_paso1'] > 0:
-            estadisticas['porcentaje_cruce'] = round(
-                (estadisticas['total_cruzados'] / estadisticas['total_paso1']) * 100, 2
-            )
-            estadisticas['porcentaje_aptos_rpa'] = round(
-                (estadisticas['aptos_rpa'] / estadisticas['total_paso1']) * 100, 2
-            )
-        else:
-            estadisticas['porcentaje_cruce'] = 0
-            estadisticas['porcentaje_aptos_rpa'] = 0
+        # Contar cerrados y pendientes
+        cerrados = sum(1 for r in resultado if _esta_cerrado(r))
+        pendientes = total - cerrados
         
-        mensaje_final = (
-            f"Cruce completado exitosamente. "
-            f"Procesados: {estadisticas['total_paso1']} registros, "
-            f"Cruzados: {estadisticas['total_cruzados']}, "
-            f"Aptos RPA: {estadisticas['aptos_rpa']}"
-        )
-        
-        logger.info(mensaje_final)
-        
-        return {
-            'success': True,
-            'datos_cruzados': datos_cruzados,
-            'estadisticas': estadisticas,
-            'message': mensaje_final
+        estadisticas = {
+            "total_cruzados": total,
+            "pendientes_cierre": pendientes,
+            "cerrados": cerrados,
+            "aptos_rpa": aptos,
+            "sin_woq": no_cruce,
+            "porcentaje_cruce": round((aptos / total) * 100, 2) if total > 0 else 0.0
         }
-        
+
+        return {"success": True, "datos_cruzados": resultado, "estadisticas": estadisticas}
     except Exception as e:
-        error_msg = f"Error en el cruce de datos: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        return {
-            'success': False,
-            'message': error_msg
-        }
+        logger.error(f"Error en Paso 3 (base Paso 2): {e}", exc_info=True)
+        return {"success": False, "message": f"Error en cruce: {str(e)}"}
 
 def exportar_datos_rpa(datos_cruzados: List[Dict], carpeta_destino: str) -> Dict[str, Any]:
     """
