@@ -96,6 +96,17 @@
                 </svg>
                 Volver al Paso 2
               </button>
+
+              <button 
+                class="btn btn-success flex-1" 
+                id="btn-siguiente-superior"
+                style="display: none;"
+              >
+                <span>Siguiente paso</span>
+                <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5-5 5M6 12h12"/>
+                </svg>
+              </button>
             </div>
 
             <!-- Loading Spinner -->
@@ -258,20 +269,17 @@
           <div class="step active">3</div>
           <div class="step-connector"></div>
           <div class="step">4</div>
-          <div class="step-connector"></div>
-          <div class="step">5</div>
         </div>
       </nav>
       
       <!-- Labels para pasos (solo en pantallas grandes) -->
       <div class="hidden md:block mt-3">
         <div class="flex justify-center">
-          <div class="grid grid-cols-5 gap-4 text-center max-w-2xl">
+          <div class="grid grid-cols-4 gap-4 text-center max-w-2xl">
             <span class="text-sm text-gray-500">Cargar</span>
             <span class="text-sm text-gray-500">Validación</span>
             <span class="text-sm font-semibold text-verisure-red">Cruce</span>
             <span class="text-sm text-gray-500">Exportar</span>
-            <span class="text-sm text-gray-500">Finalizar</span>
           </div>
         </div>
       </div>

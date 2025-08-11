@@ -73,9 +73,8 @@ function setupStep2Buttons() {
         alert("❌ pywebview no está disponible.");
         return;
       }
-        console.log("📡 Enviando a pywebview.api.procesar_archivo_woq");
-        clearStep2File();
-        window.appStateStep2.isProcessing = true;
+      console.log("📡 Enviando a pywebview.api.procesar_archivo_woq");
+      window.appStateStep2.isProcessing = true;
       procesarArchivoWOQ(event);
     });
   }
@@ -126,6 +125,7 @@ function setupStep2FileInput() {
     
     console.log("📂 Archivo seleccionado:", archivo.name);
     window.appStateStep2.selectedFile = archivo;
+    console.log("✅ Archivo asignado al estado:", window.appStateStep2.selectedFile?.name);
     
     // Mostrar información del archivo (esto habilitará el botón automáticamente)
     mostrarInfoArchivo(archivo);
@@ -273,11 +273,16 @@ function mostrarInfoArchivo(archivo) {
 
 function clearStep2File() {
   console.log("🧹 Iniciando limpieza de estado Step 2");
+  console.log("🔍 Estado antes de limpiar:", {
+    selectedFile: window.appStateStep2.selectedFile?.name || 'null',
+    inputValue: document.getElementById('archivo-woq')?.value || 'empty'
+  });
 
   // Limpiar input de archivo
   const input = document.getElementById('archivo-woq');
   if (input) {
     input.value = '';
+    console.log("✅ Input de archivo limpiado");
   }
 
   // Limpiar información visual del archivo
@@ -286,8 +291,9 @@ function clearStep2File() {
     fileInfo.classList.add('hidden');
   }
 
-  // 🔄 NO reiniciamos selectedFile aquí para mantenerlo durante el procesamiento
-  // window.appStateStep2.selectedFile = null;
+  // Limpiar archivo seleccionado completamente cuando se llama desde la UI
+  window.appStateStep2.selectedFile = null;
+  console.log("✅ Estado de archivo limpiado");
   window.appStateStep2.validationResult = null;
   window.appStateStep2.datosFiltrados = [];
   window.appStateStep2.yaMostroResultados = false;
@@ -402,9 +408,34 @@ function procesarArchivoWOQ(event) {
   ocultarResultadosStep2();
   window.appStateStep2.yaMostroResultados = false;
 
-  const archivo = window.appStateStep2.selectedFile || document.getElementById("archivo-woq").files[0];
+  // Buscar el archivo de múltiples fuentes para mayor robustez
+  let archivo = null;
+  
+  // 1. Desde el estado de la aplicación
+  if (window.appStateStep2.selectedFile) {
+    archivo = window.appStateStep2.selectedFile;
+    console.log("📂 Archivo encontrado en appState:", archivo.name);
+  }
+  
+  // 2. Desde el input del DOM como backup
+  if (!archivo) {
+    const inputElement = document.getElementById("archivo-woq");
+    if (inputElement && inputElement.files && inputElement.files[0]) {
+      archivo = inputElement.files[0];
+      console.log("📂 Archivo encontrado en DOM input:", archivo.name);
+      // Actualizar el estado para sincronizar
+      window.appStateStep2.selectedFile = archivo;
+    }
+  }
+
+  console.log("🔍 Estado de archivo:", {
+    appStateFile: window.appStateStep2.selectedFile?.name || 'null',
+    domInputFile: document.getElementById("archivo-woq")?.files?.[0]?.name || 'null',
+    finalFile: archivo?.name || 'null'
+  });
 
   if (!archivo || archivo.name === "") {
+    console.error("❌ No se encontró archivo válido para procesar");
     alert("Debes seleccionar un archivo");
     mostrarStep2Loading(false);
     window.appStateStep2.isProcessing = false;
@@ -1489,6 +1520,9 @@ window.exportarExcel = () => {
 
 // Hacer la función verDetalleWoq disponible globalmente para los botones HTML
 window.verDetalleWoq = verDetalleWoq;
+
+// Hacer la función clearStep2File disponible globalmente para el botón X del HTML
+window.clearStep2File = clearStep2File;
 
 // Iniciar app al cargar
 document.addEventListener("DOMContentLoaded", initializeStep2App);

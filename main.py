@@ -150,6 +150,41 @@ class WOGestAPI:
                 "paso2_procesado": False,
                 "error": str(e)
             }
+
+    def obtener_datos_para_rpa(self) -> dict:
+        """
+        Devuelve los registros ya cruzados para mostrarlos en Step 4.
+        Usa las tablas temporales (SQLite) -> Paso 1 y Paso 2 -> Paso 3.
+        """
+        try:
+            from procesamiento.db_sqlite import leer_temp_paso1, leer_temp_paso2
+            from procesamiento.paso3 import realizar_cruce_datos as cruce_p3
+
+            df1 = leer_temp_paso1()
+            df2 = leer_temp_paso2()
+
+            if df1.empty:
+                return {"success": False, "message": "No hay datos del Paso 1 (WorkOrder)"}
+            if df2.empty:
+                return {"success": False, "message": "No hay datos del Paso 2 (WOQ)"}
+
+            datos_p1 = df1.to_dict(orient="records")
+            datos_p2 = df2.to_dict(orient="records")
+            resultado = cruce_p3(datos_p1, datos_p2)
+
+            if not resultado.get("success"):
+                return {"success": False, "message": resultado.get("message", "Error en cruce")}
+
+            datos = resultado.get("datos_cruzados", [])
+            return {
+                "success": True,
+                "registros_rpa": datos,        # Step4.js usa este campo
+                "estadisticas": resultado.get("estadisticas", {}),
+                "total_registros": len(datos)
+            }
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
     def __init__(self, config: ConfiguracionApp):
         self.config = config
         self._archivos_temporales = []
@@ -402,38 +437,101 @@ class WOGestAPI:
             return {"success": False, "message": str(e)}    
     
     def exportar_excel_con_ruta(self, payload: dict) -> dict:
-        """Exporta Excel a la ruta especificada"""
+        """
+        Exporta Excel. Si datos.contexto == 'step4_rpa' aplica la lógica específica del Paso 4:
+          - Filtro: es_cerrado == 0, Estado_Paso1 == 'Correcto', Apto RPA == 'SÍ'
+          - Columnas exportadas: WO, ORDEN_CONTRATO
+          - Limpia temporales y sugiere volver al Home.
+        Si no, conserva el comportamiento genérico existente.
+        """
+        import pandas as pd
+        from datetime import datetime
+        import os
+
         try:
-            # Obtener datos
-            datos = payload.get("datos", {})
+            datos = payload.get("datos", {}) or {}
             detalle = datos.get("detalle", [])
-            
+
             if not detalle:
                 return {"success": False, "message": "No hay datos para exportar"}
-            
-            # Crear DataFrame
-            df = pd.DataFrame(detalle)
-            
-            # Obtener carpeta destino
+
             carpeta_destino = payload.get("carpeta_destino")
             if not carpeta_destino:
-                # Si no se especifica carpeta, usar Downloads (sin import os duplicado)
                 carpeta_destino = os.path.join(os.path.expanduser("~"), "Downloads")
-            
-            # Crear nombre de archivo con timestamp
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            nombre_archivo = f"validacion_resultado_{timestamp}.xlsx"
+
+            contexto = (datos.get("contexto") or "").lower()
+
+            # ----------- Lógica ESPECÍFICA Paso 4 -----------
+            if contexto == "step4_rpa":
+                def _val(dic, *keys):
+                    for k in keys:
+                        if k in dic and dic[k] is not None:
+                            return str(dic[k]).strip()
+                    return ""
+
+                def _es_cerrado(dic):
+                    v = _val(dic, "es_cerrado", "ES_CERRADO", "woq_es_cerrado", "WOQ_ES_CERRADO", "woq_cerrado", "WOQ_CERRADO").upper()
+                    if v in ("1", "SI", "SÍ", "TRUE", "YES"): return 1
+                    if v in ("0", "NO", "FALSE"): return 0
+                    return 0
+
+                def _apto(dic):
+                    v = _val(dic, "Apto RPA", "APTO_RPA", "apto_rpa").upper()
+                    if v in ("SI", "SÍ", "TRUE", "YES", "1"): return "SÍ"
+                    if v in ("NO", "FALSE", "0"): return "NO"
+                    return ""
+
+                def _estado(dic):
+                    return _val(dic, "Estado_Paso1", "estado_paso1").upper()
+
+                def _wo(dic):
+                    return _val(dic, "WO", "wo", "N_WO", "N°_WO", "N_WO2")
+
+                def _orden(dic):
+                    return _val(dic, "ORDEN_CONTRATO", "CONTRATO", "woq_contrato", "WOQ_CONTRATO")
+
+                filas = []
+                for r in detalle:
+                    if _es_cerrado(r) != 0:
+                        continue
+                    if _estado(r) != "CORRECTO":
+                        continue
+                    if _apto(r) != "SÍ":
+                        continue
+                    filas.append({"WO": _wo(r), "ORDEN_CONTRATO": _orden(r)})
+
+                if not filas:
+                    return {"success": False, "message": "No hay registros que cumplan las condiciones del Paso 4."}
+
+                df = pd.DataFrame(filas)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                nombre_archivo = f"RPA_WO_ORDEN_CONTRATO_{ts}.xlsx"
+                ruta_final = os.path.join(carpeta_destino, nombre_archivo)
+                df.to_excel(ruta_final, index=False)
+
+                # Limpia temporales tras exportar
+                try:
+                    from procesamiento.db_sqlite import limpiar_tablas_temporales
+                    limpiar_tablas_temporales()
+                except Exception as e:
+                    logging.getLogger(__name__).warning(f"No se pudieron limpiar temporales: {e}")
+
+                return {
+                    "success": True,
+                    "archivo": ruta_final,
+                    "message": f"Archivo exportado: {nombre_archivo}",
+                    "total_registros": len(filas),
+                    "redirect_home": True
+                }
+
+            # ----------- Comportamiento GENÉRICO (otros pasos) -----------
+            df = pd.DataFrame(detalle)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nombre_archivo = f"validacion_resultado_{ts}.xlsx"
             ruta_final = os.path.join(carpeta_destino, nombre_archivo)
-            
-            # Exportar Excel
             df.to_excel(ruta_final, index=False)
-            
-            return {
-                "success": True, 
-                "archivo": ruta_final,
-                "message": f"Archivo exportado exitosamente como: {nombre_archivo}"
-            }
-            
+            return {"success": True, "archivo": ruta_final, "message": f"Archivo exportado como: {nombre_archivo}"}
+
         except Exception as e:
             return {"success": False, "message": f"Error al exportar: {str(e)}"}
 

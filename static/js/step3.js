@@ -143,6 +143,23 @@ function setupStep3Buttons() {
     // Ocultar por defecto
     btnSiguiente.style.display = 'none';
   }
+
+  // Botón siguiente superior (en Estado de los Datos)
+  const btnSiguienteSuperior = document.getElementById('btn-siguiente-superior');
+  if (btnSiguienteSuperior) {
+    btnSiguienteSuperior.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (window.appStateStep3.datosCruzados && window.appStateStep3.datosCruzados.length > 0) {
+        // Limpiar recursos antes de navegar
+        limpiarStep3();
+        window.location.href = '/step4';
+      } else {
+        alert('Debe realizar el cruce de datos antes de continuar');
+      }
+    });
+    // Ocultar por defecto
+    btnSiguienteSuperior.style.display = 'none';
+  }
 }
 
 // ===================================================================
@@ -1105,15 +1122,40 @@ function ocultarResultadosStep3() {
 }
 
 function mostrarBotonSiguiente() {
+  // Mostrar botón inferior (en la sección de resultados)
   const btnSiguiente = document.getElementById('btn-siguiente');
   if (btnSiguiente) {
     btnSiguiente.style.display = 'inline-block';
     btnSiguiente.style.visibility = 'visible';
     btnSiguiente.disabled = false;
-    
-    console.log("✅ Botón 'Siguiente paso' habilitado y mostrado");
+    console.log("✅ Botón 'Siguiente paso' inferior habilitado y mostrado");
   } else {
     console.warn("⚠️ No se encontró el botón 'btn-siguiente'");
+  }
+
+  // Mostrar botón superior (en Estado de los Datos)
+  const btnSiguienteSuperior = document.getElementById('btn-siguiente-superior');
+  if (btnSiguienteSuperior) {
+    btnSiguienteSuperior.style.display = 'inline-block';
+    btnSiguienteSuperior.style.visibility = 'visible';
+    btnSiguienteSuperior.disabled = false;
+    console.log("✅ Botón 'Siguiente paso' superior habilitado y mostrado");
+  } else {
+    console.warn("⚠️ No se encontró el botón 'btn-siguiente-superior'");
+  }
+}
+
+function ocultarBotonSiguiente() {
+  // Ocultar botón inferior
+  const btnSiguiente = document.getElementById('btn-siguiente');
+  if (btnSiguiente) {
+    btnSiguiente.style.display = 'none';
+  }
+
+  // Ocultar botón superior
+  const btnSiguienteSuperior = document.getElementById('btn-siguiente-superior');
+  if (btnSiguienteSuperior) {
+    btnSiguienteSuperior.style.display = 'none';
   }
 }
 
@@ -1234,6 +1276,10 @@ function limpiarStep3() {
       window.pywebviewCheckerStep3 = null;
       debugStep3("⏱️ Intervalos de verificación limpiados");
     }
+
+    // Ocultar botones de siguiente paso
+    ocultarBotonSiguiente();
+    debugStep3("🔲 Botones de siguiente paso ocultados");
     
     debugStep3("✅ Limpieza completada exitosamente");
     
