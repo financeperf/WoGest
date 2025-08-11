@@ -1,14 +1,47 @@
-import sqlite3
+import os, sys, sqlite3
+from pathlib import Path
 import pandas as pd
 
+# === Ruta segura para la BD ===
+def get_db_path() -> str:
+    """
+    Devuelve una ruta ABSOLUTA y escribible para la BD SQLite.
+    En ejecutable (PyInstaller) usa ~/.wogest/temp_wogest.sqlite3
+    En desarrollo usa <proyecto>/.wogest/temp_wogest.sqlite3
+    """
+    if getattr(sys, "frozen", False):  # ejecutable PyInstaller
+        base = Path(os.path.expanduser("~")) / ".wogest"
+    else:
+        base = Path(__file__).resolve().parent.parent / ".wogest"
+    base.mkdir(parents=True, exist_ok=True)
+    return str(base / "temp_wogest.sqlite3")
+
+# === Conexión centralizada ===
+def get_connection():
+    """
+    Usa siempre la ruta de get_db_path() y habilita acceso multi-hilo.
+    """
+    return sqlite3.connect(get_db_path(), check_same_thread=False)
+
+# === Inicialización mínima ===
+def init_db():
+    """
+    Garantiza que el archivo se pueda crear/abrir.
+    No define esquemas aquí (los crean las funciones de tu flujo).
+    """
+    Path(get_db_path()).parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(get_db_path()) as _:
+        pass
+
 def guardar_paso1_sqlite(df, db_path="config/combinaciones.db"):
+    conn = None
     try:
         # ✅ Convertir todas las columnas datetime en strings
         for col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 df[col] = df[col].astype(str)
 
-        conn = sqlite3.connect(db_path, timeout=10)
+        conn = sqlite3.connect(get_db_path(), check_same_thread=False)
         cursor = conn.cursor()
 
         # ✅ Tabla con ID autoincremental
@@ -59,19 +92,21 @@ def guardar_paso1_sqlite(df, db_path="config/combinaciones.db"):
         print("❌ Error al guardar en SQLite:", e)
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def guardar_paso2_sqlite(df, db_path="config/combinaciones.db"):
     import sqlite3
     import pandas as pd
 
+    conn = None
     try:
         # Convertir datetime a string
         for col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 df.loc[:, col] = df[col].astype(str)
 
-        conn = sqlite3.connect(db_path, timeout=10)
+        conn = sqlite3.connect(get_db_path(), check_same_thread=False)
         cursor = conn.cursor()
 
         # Crear tabla sin restricciones conflictivas
@@ -142,21 +177,22 @@ def guardar_paso2_sqlite(df, db_path="config/combinaciones.db"):
         raise
 
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def leer_temp_paso1(db_path="config/combinaciones.db"):
-    conn = sqlite3.connect(db_path)
+    conn = get_connection()
     df = pd.read_sql_query("SELECT * FROM temp_paso1", conn)
     conn.close()
     return df
 
 def leer_temp_paso2(db_path="config/combinaciones.db"):
-    conn = sqlite3.connect(db_path)
+    conn = get_connection()
     df = pd.read_sql_query("SELECT * FROM temp_paso2", conn)
     conn.close()
     return df
 def limpiar_tablas_temporales(db_path="config/combinaciones.db"):
-    conn = sqlite3.connect(db_path)
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM temp_paso1")
     cursor.execute("DELETE FROM temp_paso2")

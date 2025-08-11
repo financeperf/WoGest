@@ -29,6 +29,35 @@ from controlador import (
     limpiar_estado_validacion,
     obtener_estadisticas_validacion
 )
+from procesamiento.db_sqlite import init_db, get_db_path
+
+# --- util JSON safe ---
+import math
+from datetime import datetime, date
+
+def _json_safe(value):
+    try:
+        import pandas as pd, numpy as np
+    except Exception:
+        pd = None; np = None
+
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+        return None
+    if pd is not None:
+        # pandas NaT / NaN
+        try:
+            if pd.isna(value):
+                return None
+        except Exception:
+            pass
+    # fechas → ISO
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
 
 # --------------------------------------
 # CONFIGURACIÓN GENERAL
@@ -176,12 +205,12 @@ class WOGestAPI:
                 return {"success": False, "message": resultado.get("message", "Error en cruce")}
 
             datos = resultado.get("datos_cruzados", [])
-            return {
+            return _json_safe({
                 "success": True,
                 "registros_rpa": datos,        # Step4.js usa este campo
                 "estadisticas": resultado.get("estadisticas", {}),
                 "total_registros": len(datos)
-            }
+            })
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -575,7 +604,7 @@ class WOGestAPI:
             if df is None:
                 return {"error": "Error al procesar el archivo"}
 
-            return {"data": df.to_dict(orient='records')}
+            return _json_safe({"data": df.to_dict(orient='records')})
 
         except Exception as e:
             return {"error": str(e)}
@@ -615,11 +644,11 @@ class WOGestAPI:
 
             detalle = df.fillna("").to_dict(orient="records")
 
-            return {
+            return _json_safe({
                 "success": True,
                 "message": f"Archivo procesado: {len(detalle)} registros",
                 "detalle": detalle
-            }
+            })
 
         except Exception as e:
             logger.exception("❌ Error en procesar_archivo_woq")
@@ -685,8 +714,8 @@ class WOGestAPI:
 
             resultado = cruce_p3(datos_paso1, datos_paso2)
 
-            # Retornar tal cual lo que define paso3.py
-            return resultado
+            # Retornar tal cual lo que define paso3.py, pero saneado
+            return _json_safe(resultado)
             
         except Exception as e:
             logger.exception("❌ Error en realizar_cruce_datos")
@@ -845,6 +874,10 @@ def main():
 
     # Ruta del ícono
     icon_path = os.path.join(STATIC_DIR, "img", "icon.ico")
+    
+    # Initialize database
+    print(f"[WOGest] SQLite en: {get_db_path()}")
+    init_db()
     
     # Crear la ventana - usar el parámetro shadow para aplicar ícono automáticamente
     webview.create_window(
