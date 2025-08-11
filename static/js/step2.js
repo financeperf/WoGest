@@ -52,7 +52,7 @@ function initializeStep2App() {
   
   // Conectar botón exportar Excel
   document.getElementById('btn-exportar-excel')?.addEventListener('click', () => {
-    exportarExcel({ detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
+    exportarExcel({ contexto: 'step2_p2', detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
   });
   
   // Verificar pywebview
@@ -1515,7 +1515,7 @@ function verDetalleWoq(index) {
 
 // Hacer la función exportarExcel disponible globalmente para los botones HTML
 window.exportarExcel = () => {
-  exportarExcel({ detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
+  exportarExcel({ contexto: 'step2_p2', detalle: window.appStateStep2.datosFiltrados }, "WOQ_step2");
 };
 
 // Hacer la función verDetalleWoq disponible globalmente para los botones HTML

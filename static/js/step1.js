@@ -1004,7 +1004,7 @@ async function exportarExcel() {
     
     // Usar la función centralizada de exportación  
     await exportarExcelUtils(
-      window.appState.validationResult,
+      { contexto: 'step1_p1', ...window.appState.validationResult },
       window.appState.selectedFile?.name || 'N/A'
     );
   } catch (error) {

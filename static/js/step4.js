@@ -728,7 +728,7 @@ async function handleExportarRPA(e) {
         detalle,
         estadisticas: window.appStateStep4.estadisticasRPA
       },
-      "RPA_WO_ORDEN_CONTRATO.xlsx",
+      "Aptos_RPA_P4.xlsx",
       // onSuccess
       (resultado) => {
         console.log("✅ Exportación completada:", resultado);

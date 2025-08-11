@@ -87,7 +87,7 @@ function setupStep3Buttons() {
       }
 
       exportarExcel(
-        { detalle: datos },
+        { contexto: 'step3_p3', detalle: datos },
         "CrucePaso3.xlsx",
         (resp) => console.log("✅ Exportación completada", resp),
         (err) => console.error("❌ Error al exportar", err)
@@ -108,7 +108,7 @@ function setupStep3Buttons() {
       }
 
       exportarExcel(
-        { detalle: datos },
+        { contexto: 'step3_p3', detalle: datos },
         "CrucePaso3.xlsx",
         (resp) => console.log("✅ Exportación completada", resp),
         (err) => console.error("❌ Error al exportar", err)
@@ -1182,7 +1182,7 @@ function exportarCruce() {
   const datos = window.appStateStep3.datosFiltrados || [];
 
   exportarExcel(
-    { detalle: datos },
+    { contexto: 'step3_p3', detalle: datos },
     "CrucePaso3.xlsx",
     (resp) => console.log("✅ Exportación completada", resp),
     (err) => console.error("❌ Error al exportar", err)

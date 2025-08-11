@@ -490,6 +490,15 @@ class WOGestAPI:
 
             contexto = (datos.get("contexto") or "").lower()
 
+            # Mapeo de prefijos para nombres de archivo
+            prefix_map = {
+                "step1_p1": "WorkOrder_P1_",
+                "step2_p2": "WOQ_P2_",
+                "step3_p3": "Cruce_P3_",
+                "step4_rpa": "Aptos_RPA_P4_",
+            }
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
             # ----------- Lógica ESPECÍFICA Paso 4 -----------
             if contexto == "step4_rpa":
                 def _val(dic, *keys):
@@ -533,8 +542,7 @@ class WOGestAPI:
                     return {"success": False, "message": "No hay registros que cumplan las condiciones del Paso 4."}
 
                 df = pd.DataFrame(filas)
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                nombre_archivo = f"RPA_WO_ORDEN_CONTRATO_{ts}.xlsx"
+                nombre_archivo = f"{prefix_map['step4_rpa']}{ts}.xlsx"
                 ruta_final = os.path.join(carpeta_destino, nombre_archivo)
                 df.to_excel(ruta_final, index=False)
 
@@ -555,8 +563,7 @@ class WOGestAPI:
 
             # ----------- Comportamiento GENÉRICO (otros pasos) -----------
             df = pd.DataFrame(detalle)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            nombre_archivo = f"validacion_resultado_{ts}.xlsx"
+            nombre_archivo = f"{prefix_map.get(contexto, 'validacion_resultado_')}{ts}.xlsx"
             ruta_final = os.path.join(carpeta_destino, nombre_archivo)
             df.to_excel(ruta_final, index=False)
             return {"success": True, "archivo": ruta_final, "message": f"Archivo exportado como: {nombre_archivo}"}
