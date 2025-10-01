@@ -518,11 +518,9 @@ if (!window.pywebviewChecker) {
 
 setTimeout(checkPywebviewReady, 100);
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeApp);
-} else {
-  initializeApp();
-}
+// La inicialización de la app se hace desde home.js al cargar step1.js
+// Así evitamos dobles llamadas a initializeApp()
+console.log("ℹ️ step1.js cargado - esperando llamada desde home.js...");
 
 function validarCarga(event) {
   console.log("🔍 Iniciando validarCarga()");
@@ -570,7 +568,7 @@ function validarCarga(event) {
         preview.classList.remove("hidden");
         if (resp.success) {
           preview.innerHTML = `<p class="text-green-700 font-medium">✅ ${resp.message}</p>`;
-          updateProcessStatus('Archivo validado correctamente', 'success');
+          updateProcessStatus('Archivo validado correctamente (solo DMCE/AMCE)', 'success');
 
           window.appState.validationResult = resp;
 
@@ -952,6 +950,9 @@ function generarChipRPA(rpa) {
 }
 
 function actualizarEstadisticas(stats) {
+  console.log("Estadísticas recibidas:", stats);
+  
+  // Mapear nombres de campos del backend a los nombres en el frontend
   const elementos = {
     'total-registros': stats.total || 0,
     'correctos': stats.correctos || 0,

@@ -348,7 +348,8 @@ class RenovacionValidator:
                 'total_registros': 0,
                 'registros_correctos': 0,
                 'registros_incorrectos': 0,
-                'grupos_procesados': 0
+                'grupos_procesados': 0,
+                'advertencias': 0
             }
             
             for (cliente, mant), grupo in agrupado:
@@ -370,9 +371,12 @@ class RenovacionValidator:
                     }
                     resultados.append(resultado_fila)
 
+                    # Incrementar estadísticas (df ya viene filtrado por _limpiar_datos)
                     stats['total_registros'] += 1
                     if resultado_grupo['estado'] == 'Correcto':
                         stats['registros_correctos'] += 1
+                    elif resultado_grupo['estado'] == 'Advertencia':
+                        stats['advertencias'] += 1
                     else:
                         stats['registros_incorrectos'] += 1
                        
@@ -387,6 +391,9 @@ class RenovacionValidator:
             
             # 🔧 Normalizar nombres de columna a minúsculas
             df_resultado.columns = [col.lower() for col in df_resultado.columns]
+            
+            # Las estadísticas ya se calcularon durante el procesamiento
+            # El método _limpiar_datos ya filtró por DMCE/AMCE
             
             # 💾 INSERTAR REGISTROS A LA BASE DE DATOS - Solo registros correctos
             try:
@@ -426,10 +433,11 @@ class RenovacionValidator:
                 # No interrumpir el flujo principal, solo registrar el error
             
             mensaje_final = (
-                f"Validación completada exitosamente. "
+                f"Validación completada exitosamente (solo DMCE/AMCE). "
                 f"Procesados: {stats['total_registros']} registros, "
                 f"Correctos: {stats['registros_correctos']}, "
-                f"Incorrectos: {stats['registros_incorrectos']}"
+                f"Incorrectos: {stats['registros_incorrectos']}, "
+                f"Advertencias: {stats['advertencias']}"
             )
            
             logger.info(mensaje_final)

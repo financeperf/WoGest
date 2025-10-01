@@ -66,15 +66,23 @@ class ControladorValidacion:
                 return False, "El archivo debe ser un archivo Excel (.xlsx o .xls)", {}
 
             # Realizar validación usando el validador mejorado
-            df_resultado, mensaje = validar_renovaciones(ruta_archivo)
+            resultado = validator.validar_renovaciones(ruta_archivo)
+            
+            if not resultado.success or resultado.data is None:
+                return False, resultado.message, {}
+                
+            df_resultado = resultado.data
+            mensaje = resultado.message
 
-            if df_resultado is None:
-                return False, mensaje, {}
-
+            # Obtener las estadísticas calculadas desde ValidationResult
+            # Esto ya incluye solo registros DMCE/AMCE
+            # Renombrar claves para que coincidan con lo que espera el frontend
             stats = {
-                'total_registros': len(df_resultado),
-                'correctos': len(df_resultado[df_resultado["estado"] == "Correcto"]),
-                'incorrectos': len(df_resultado[df_resultado["estado"] == "Incorrecto"]),
+                'total': resultado.stats['total_registros'],
+                'correctos': resultado.stats['registros_correctos'],
+                'incorrectos': resultado.stats['registros_incorrectos'],
+                'advertencias': resultado.stats['advertencias'],
+                'grupos_procesados': resultado.stats['grupos_procesados']
             }
 
             with self._lock:

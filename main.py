@@ -18,7 +18,9 @@ import tempfile
 import sys
 import io
 # Forzar codificación UTF-8 solo si hay consola
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+if sys.stdout and hasattr(sys.stdout, "buffer") and sys.stdout.isatty():
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+
 # --------------------------------------
 # IMPORTAR COMPONENTES DEL SISTEMA
 # --------------------------------------
@@ -48,13 +50,11 @@ def _json_safe(value):
     if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
         return None
     if pd is not None:
-        # pandas NaT / NaN
         try:
             if pd.isna(value):
                 return None
         except Exception:
             pass
-    # fechas → ISO
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     return value
@@ -62,33 +62,40 @@ def _json_safe(value):
 # --------------------------------------
 # CONFIGURACIÓN GENERAL
 # --------------------------------------
-# Detectar si está ejecutando desde .exe
 if getattr(sys, 'frozen', False):
-    BASE_DIR = sys._MEIPASS  # Solo para lectura de recursos
+    BASE_DIR = sys._MEIPASS
 else:
     BASE_DIR = os.path.dirname(__file__)
 
 TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
-# ✅ Carpetas seguras para lectura/escritura
-USER_HOME = os.path.expanduser("~")
-EXPORTS_DIR = os.path.join(USER_HOME, 'Documents', 'WOGest', 'exports')
-TEMP_DIR = os.path.join(tempfile.gettempdir(), 'WOGest')
-LOG_DIR = os.path.join(USER_HOME, 'Documents', 'WOGest', 'logs')
-# Asegurar que Bottle pueda encontrar las plantillas
+EXPORTS_DIR = os.path.join(BASE_DIR, 'datos', 'exports')
+TEMP_DIR = os.path.join(BASE_DIR, 'datos', 'temp')
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+
+os.makedirs(EXPORTS_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
 TEMPLATE_PATH.insert(0, TEMPLATES_DIR)
 
-# Configurar logging
-os.makedirs(LOG_DIR, exist_ok=True)
+handlers = [
+    logging.FileHandler(os.path.join(LOG_DIR, 'wogest.log'), encoding='utf-8')
+]
+if sys.stdout and not sys.stdout.closed:
+    try:
+        if sys.stdout.isatty():
+            handlers.append(logging.StreamHandler(sys.stdout))
+    except Exception:
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(os.path.join(LOG_DIR, 'wogest.log')),
-        logging.StreamHandler()
-    ]
+    handlers=handlers
 )
+
 logger = logging.getLogger(__name__)
 
 # --------------------------------------
@@ -96,42 +103,36 @@ logger = logging.getLogger(__name__)
 # --------------------------------------
 app_web = Bottle()
 
-@app_web.route('/') # type: ignore
+@app_web.route('/')
 def index():
-    logger.info("Accediendo a ruta raíz (home)")
     return template('components/home.html')
 
-@app_web.route('/home') # type: ignore
+@app_web.route('/home')
 def home():
-    logger.info("Renderizando home.html")
     return template('components/home.html')
 
-@app_web.route('/step1') # type: ignore
+@app_web.route('/step1')
 def step1():
-    logger.info("Renderizando step1.html")
     return template('components/step1.html')
 
-@app_web.route('/step2') # type: ignore
+@app_web.route('/step2')
 def step2():
-    logger.info("Renderizando step2.html")
     return template('components/step2.html')
 
-@app_web.route('/step3')# type: ignore
+@app_web.route('/step3')
 def step3():
-    logger.info("Renderizando step3.html")
     return template('components/step3.html')
 
-@app_web.route('/step4') # type: ignore
+@app_web.route('/step4')
 def step4():
-    logger.info("Renderizando step4.html")
     return template('components/step4.html')
 
-@app_web.route('/static/<filepath:path>')# type: ignore
+@app_web.route('/static/<filepath:path>')
 def serve_static(filepath):
     logger.debug(f"Sirviendo archivo estático: {filepath}")
     return static_file(filepath, root=STATIC_DIR)
 
-@app_web.route('/health')# type: ignore
+@app_web.route('/health')
 def health():
     return {
         "status": "OK",
@@ -151,13 +152,11 @@ class ConfiguracionApp:
     directorio_temp: str = TEMP_DIR
     directorio_logs: str = LOG_DIR
     directorio_exports: str = EXPORTS_DIR
-    max_file_size: int = 50 * 1024 * 1024  # 50MB
+    max_file_size: int = 50 * 1024 * 1024
     extensiones_permitidas: Optional[List[str]] = None
 
     def __post_init__(self):
         if self.extensiones_permitidas is None:
-            # Permitir .csv, .txt y archivos sin extensión para WOQ
- 
             self.extensiones_permitidas = ['.xlsx', '.xls', '.csv', '.txt', '']
 
 # --------------------------------------
@@ -169,22 +168,26 @@ class WOGestAPI:
             from procesamiento.db_sqlite import leer_temp_paso1, leer_temp_paso2
             df1 = leer_temp_paso1()
             df2 = leer_temp_paso2()
+            
+            # Calcular estadísticas para paso1 y paso2
+            total_registros_paso1 = len(df1) if not df1.empty else 0
+            total_registros_paso2 = len(df2) if not df2.empty else 0
+            
             return {
                 "paso1_procesado": not df1.empty,
-                "paso2_procesado": not df2.empty
+                "paso2_procesado": not df2.empty,
+                "total_registros_paso1": total_registros_paso1,
+                "total_registros_paso2": total_registros_paso2
             }
         except Exception as e:
             return {
                 "paso1_procesado": False,
                 "paso2_procesado": False,
+                "total_registros_paso1": 0,
+                "total_registros_paso2": 0,
                 "error": str(e)
             }
-
     def obtener_datos_para_rpa(self) -> dict:
-        """
-        Devuelve los registros ya cruzados para mostrarlos en Step 4.
-        Usa las tablas temporales (SQLite) -> Paso 1 y Paso 2 -> Paso 3.
-        """
         try:
             from procesamiento.db_sqlite import leer_temp_paso1, leer_temp_paso2
             from procesamiento.paso3 import realizar_cruce_datos as cruce_p3
@@ -207,7 +210,7 @@ class WOGestAPI:
             datos = resultado.get("datos_cruzados", [])
             return _json_safe({
                 "success": True,
-                "registros_rpa": datos,        # Step4.js usa este campo
+                "registros_rpa": datos,
                 "estadisticas": resultado.get("estadisticas", {}),
                 "total_registros": len(datos)
             })
@@ -218,7 +221,6 @@ class WOGestAPI:
         self.config = config
         self._archivos_temporales = []
         self._inicializar_directorios()
-        # Registro explícito de la ruta POST para procesar_paso2
         app_web.route('/procesar_paso2', method='POST')(self.procesar_paso2)
         logger.info("API inicializada")
 
@@ -231,23 +233,16 @@ class WOGestAPI:
             return []
 
         detalle = []
-
         for index, row in df.iterrows():
-            # Crear registro con todas las columnas del DataFrame
             registro = {}
-            
-            # Incluir todas las columnas del DataFrame original
             for col in df.columns:
                 value = row.get(col, "")
                 if pd.notna(value):
-                    # Manejar campos numéricos con decimales
                     if col.lower() in ['cantidad', 'precio', 'cuota'] and isinstance(value, (int, float)):
                         registro[col.lower()] = float(value) if value != 0 else 0.0
-                    # Manejar fechas - convertir a solo fecha sin hora
                     elif col.lower() == 'fecha' and isinstance(value, (pd.Timestamp, datetime)):
                         registro[col.lower()] = value.strftime('%Y-%m-%d')
                     elif col.lower() == 'fecha' and isinstance(value, str):
-                        # Intentar parsear fecha si es string
                         try:
                             fecha_obj = pd.to_datetime(value)
                             registro[col.lower()] = fecha_obj.strftime('%Y-%m-%d')
@@ -256,53 +251,36 @@ class WOGestAPI:
                     else:
                         registro[col.lower()] = str(value)
                 else:
-                    # Valores por defecto para campos importantes
                     if col.lower() in ['cantidad', 'precio', 'cuota']:
                         registro[col.lower()] = 0.0
                     else:
                         registro[col.lower()] = ""
-            
-            # Asegurar que las columnas principales estén presentes para compatibilidad
             registro["rpa"] = "Sí" if row.get("estado") == "Correcto" else "No"
-            
             detalle.append(registro)
-
         return detalle
 
     def _generar_estadisticas_frontend(self, df: pd.DataFrame) -> Dict[str, Any]:
         if df is None or df.empty:
-            return {
-                "total": 0,
-                "correctos": 0,
-                "incorrectos": 0,
-                "advertencias": 0
-            }
+            return {"total": 0, "correctos": 0, "incorrectos": 0, "advertencias": 0}
 
         total = len(df)
         correctos = len(df[df["estado"] == "Correcto"])
         incorrectos = len(df[df["estado"] == "Incorrecto"])
         advertencias = len(df[df["estado"] == "Advertencia"]) if "Advertencia" in df["estado"].values else 0
 
-        return {
-            "total": total,
-            "correctos": correctos,
-            "incorrectos": incorrectos,
-            "advertencias": advertencias
-        }
+        return {"total": total, "correctos": correctos, "incorrectos": incorrectos, "advertencias": advertencias}
 
     def validar_archivo_workorder(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        print("🟢 ENTRANDO en validar_archivo_workorder() desde frontend JS")
         try:
             nombre = payload.get("nombre")
             base64_data = payload.get("base64")
-            logger.info("📥 Recibido archivo para validación: %s", nombre)
+            logger.info("📥 Recibido archivo WorkOrder: %s", nombre)
 
             if not nombre or not base64_data:
                 logger.warning("⚠️ Nombre o contenido faltante")
                 return {"success": False, "message": "Nombre o contenido faltante"}
 
             extension = Path(nombre).suffix.lower()
-
             extensiones_permitidas = self.config.extensiones_permitidas or []
             if extension not in extensiones_permitidas:
                 if extension == '':
@@ -326,64 +304,30 @@ class WOGestAPI:
                 f.write(decoded)
             logger.info("📄 Archivo temporal guardado en: %s", temp_file)
             self._archivos_temporales.append(temp_file)
-            logger.info("🚀 Llamando controlador.validar_archivo_workorder()...")
+
+            logger.info("🚀 Validando archivo con controlador...")
             success, msg, backend_stats = controlador.validar_archivo_workorder(temp_file)
-            logger.info("✅ Validación completa: %s - %s", success, msg)
+            logger.info("✅ Validación WorkOrder completada: %s - %s", success, msg)
 
             if not success:
-                return {
-                    "success": False,
-                    "message": msg,
-                    "detalle": [],
-                    "estadisticas": {
-                        "total": 0,
-                        "correctos": 0,
-                        "incorrectos": 0,
-                        "advertencias": 0
-                    }
-                }
+                return {"success": False, "message": msg, "detalle": [],
+                        "estadisticas": {"total": 0, "correctos": 0, "incorrectos": 0, "advertencias": 0}}
 
             df_validado = controlador.obtener_dataframe_validado()
-
             if df_validado is None:
                 logger.warning("⚠️ No se pudo obtener DataFrame validado")
-                return {
-                    "success": False,
-                    "message": "Error: No se pudieron obtener los datos validados",
-                    "detalle": [],
-                    "estadisticas": {
-                        "total": 0,
-                        "correctos": 0,
-                        "incorrectos": 0,
-                        "advertencias": 0
-                    }
-                }
+                return {"success": False, "message": "Error: No se pudieron obtener los datos validados",
+                        "detalle": [], "estadisticas": {"total": 0, "correctos": 0, "incorrectos": 0, "advertencias": 0}}
 
             detalle = self._convertir_dataframe_a_detalle(df_validado)
             estadisticas = self._generar_estadisticas_frontend(df_validado)
-            logger.info("📊 Datos convertidos - Total registros: %d", len(detalle))
-            logger.info("📊 Estadísticas: %s", estadisticas)
-            return {
-                "success": True,
-                "message": msg,
-                "detalle": detalle,
-                "estadisticas": estadisticas
-            }
+            logger.info("📊 Total registros procesados: %d", len(detalle))
+            return {"success": True, "message": msg, "detalle": detalle, "estadisticas": estadisticas}
 
         except Exception as e:
-            logger.exception("❌ Error inesperado durante validación:")
-            return {
-                "success": False,
-                "message": f"Error: {str(e)}",
-                "detalle": [],
-                "estadisticas": {
-                    "total": 0,
-                    "correctos": 0,
-                    "incorrectos": 0,
-                    "advertencias": 0
-                }
-            }
-
+            logger.exception("❌ Error inesperado durante validación")
+            return {"success": False, "message": f"Error: {str(e)}", "detalle": [],
+                    "estadisticas": {"total": 0, "correctos": 0, "incorrectos": 0, "advertencias": 0}}
     def guardar_estado_paso1(self, datos_validacion: Dict[str, Any]) -> Dict[str, Any]:
         try:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -391,23 +335,15 @@ class WOGestAPI:
                 self.config.directorio_temp,
                 f"estado_paso1_{timestamp}.json"
             )
-
             with open(archivo_estado, 'w', encoding='utf-8') as f:
                 json.dump(datos_validacion, f, ensure_ascii=False, indent=2)
 
             logger.info("💾 Estado del paso 1 guardado en: %s", archivo_estado)
-            return {
-                "success": True,
-                "message": "Estado guardado correctamente",
-                "archivo": archivo_estado
-            }
+            return {"success": True, "message": "Estado guardado correctamente", "archivo": archivo_estado}
 
         except Exception as e:
             logger.exception("❌ Error al guardar estado del paso 1")
-            return {
-                "success": False,
-                "message": f"Error al guardar estado: {str(e)}"
-            }
+            return {"success": False, "message": f"Error al guardar estado: {str(e)}"}
 
     def exportar_excel(self, datos_validacion: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -416,26 +352,15 @@ class WOGestAPI:
             ruta_destino = os.path.join(self.config.directorio_exports, nombre_archivo)
 
             success, message = exportar_resultado_validacion(ruta_destino, 'xlsx')
-
             if success:
                 logger.info("📊 Excel exportado exitosamente: %s", ruta_destino)
-                return {
-                    "success": True,
-                    "message": f"Archivo exportado como {nombre_archivo}",
-                    "archivo": ruta_destino
-                }
+                return {"success": True, "message": f"Archivo exportado como {nombre_archivo}", "archivo": ruta_destino}
             else:
-                return {
-                    "success": False,
-                    "message": message
-                }
+                return {"success": False, "message": message}
 
         except Exception as e:
             logger.exception("❌ Error al exportar Excel")
-            return {
-                "success": False,
-                "message": f"Error al exportar Excel: {str(e)}"
-            }
+            return {"success": False, "message": f"Error al exportar Excel: {str(e)}"}
 
     def limpiar_estado(self) -> Dict[str, Any]:
         try:
@@ -448,58 +373,36 @@ class WOGestAPI:
         except Exception as e:
             logger.exception("Error limpiando estado")
             return {"success": False, "message": str(e)}
-    
+
     def seleccionar_directorio_exportacion(self) -> dict:
-        """Abre diálogo para seleccionar carpeta de exportación"""
         try:
             carpeta = webview.windows[0].create_file_dialog(
                 webview.FOLDER_DIALOG,
                 allow_multiple=False,
                 directory=self.config.directorio_exports
             )
-            
             if carpeta and len(carpeta) > 0:
                 return {"success": True, "ruta": carpeta[0]}
             else:
                 return {"success": False, "message": "Selección cancelada"}
         except Exception as e:
-            return {"success": False, "message": str(e)}    
-    
+            return {"success": False, "message": str(e)}
+
     def exportar_excel_con_ruta(self, payload: dict) -> dict:
-        """
-        Exporta Excel. Si datos.contexto == 'step4_rpa' aplica la lógica específica del Paso 4:
-          - Filtro: es_cerrado == 0, Estado_Paso1 == 'Correcto', Apto RPA == 'SÍ'
-          - Columnas exportadas: WO, ORDEN_CONTRATO
-          - Limpia temporales y sugiere volver al Home.
-        Si no, conserva el comportamiento genérico existente.
-        """
         import pandas as pd
         from datetime import datetime
         import os
-
         try:
             datos = payload.get("datos", {}) or {}
             detalle = datos.get("detalle", [])
-
             if not detalle:
                 return {"success": False, "message": "No hay datos para exportar"}
 
-            carpeta_destino = payload.get("carpeta_destino")
-            if not carpeta_destino:
-                carpeta_destino = os.path.join(os.path.expanduser("~"), "Downloads")
-
+            carpeta_destino = payload.get("carpeta_destino") or os.path.join(os.path.expanduser("~"), "Downloads")
             contexto = (datos.get("contexto") or "").lower()
-
-            # Mapeo de prefijos para nombres de archivo
-            prefix_map = {
-                "step1_p1": "WorkOrder_P1_",
-                "step2_p2": "WOQ_P2_",
-                "step3_p3": "Cruce_P3_",
-                "step4_rpa": "Aptos_RPA_P4_",
-            }
+            prefix_map = {"step1_p1": "WorkOrder_P1_", "step2_p2": "WOQ_P2_", "step3_p3": "Cruce_P3_", "step4_rpa": "Aptos_RPA_P4_"}
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            # ----------- Lógica ESPECÍFICA Paso 4 -----------
             if contexto == "step4_rpa":
                 def _val(dic, *keys):
                     for k in keys:
@@ -530,12 +433,9 @@ class WOGestAPI:
 
                 filas = []
                 for r in detalle:
-                    if _es_cerrado(r) != 0:
-                        continue
-                    if _estado(r) != "CORRECTO":
-                        continue
-                    if _apto(r) != "SÍ":
-                        continue
+                    if _es_cerrado(r) != 0: continue
+                    if _estado(r) != "CORRECTO": continue
+                    if _apto(r) != "SÍ": continue
                     filas.append({"WO": _wo(r), "ORDEN_CONTRATO": _orden(r)})
 
                 if not filas:
@@ -545,23 +445,15 @@ class WOGestAPI:
                 nombre_archivo = f"{prefix_map['step4_rpa']}{ts}.xlsx"
                 ruta_final = os.path.join(carpeta_destino, nombre_archivo)
                 df.to_excel(ruta_final, index=False)
-
-                # Limpia temporales tras exportar
                 try:
                     from procesamiento.db_sqlite import limpiar_tablas_temporales
                     limpiar_tablas_temporales()
                 except Exception as e:
                     logging.getLogger(__name__).warning(f"No se pudieron limpiar temporales: {e}")
 
-                return {
-                    "success": True,
-                    "archivo": ruta_final,
-                    "message": f"Archivo exportado: {nombre_archivo}",
-                    "total_registros": len(filas),
-                    "redirect_home": True
-                }
+                return {"success": True, "archivo": ruta_final, "message": f"Archivo exportado: {nombre_archivo}",
+                        "total_registros": len(filas), "redirect_home": True}
 
-            # ----------- Comportamiento GENÉRICO (otros pasos) -----------
             df = pd.DataFrame(detalle)
             nombre_archivo = f"{prefix_map.get(contexto, 'validacion_resultado_')}{ts}.xlsx"
             ruta_final = os.path.join(carpeta_destino, nombre_archivo)
@@ -572,26 +464,20 @@ class WOGestAPI:
             return {"success": False, "message": f"Error al exportar: {str(e)}"}
 
     def abrir_carpeta_archivo(self, ruta_archivo: str) -> dict:
-        """Abre la carpeta que contiene el archivo exportado"""
         try:
             import subprocess
             import platform
-            
-            # Obtener solo la carpeta del archivo
             carpeta = os.path.dirname(ruta_archivo)
-            
             sistema = platform.system()
             if sistema == "Windows":
                 subprocess.run(["explorer", carpeta])
-            elif sistema == "Darwin":  # macOS
+            elif sistema == "Darwin":
                 subprocess.run(["open", carpeta])
-            else:  # Linux
+            else:
                 subprocess.run(["xdg-open", carpeta])
-            
             return {"success": True, "message": "Carpeta abierta"}
         except Exception as e:
-            return {"success": False, "message": f"Error al abrir carpeta: {str(e)}"}    
-
+            return {"success": False, "message": f"Error al abrir carpeta: {str(e)}"}
 
     def procesar_paso2(self):
         try:
@@ -607,7 +493,6 @@ class WOGestAPI:
 
             from procesamiento.paso2 import procesar_woq
             df = procesar_woq(ruta_guardado)
-
             if df is None:
                 return {"error": "Error al procesar el archivo"}
 
@@ -615,124 +500,81 @@ class WOGestAPI:
 
         except Exception as e:
             return {"error": str(e)}
-    # Dentro de la clase WOGestAPI
 
     def procesar_archivo_woq(self, payload: dict) -> dict:
         logger.info("✅ [procesar_archivo_woq] llamado desde frontend")
-
         try:
             nombre = payload.get("nombre")
             base64_data = payload.get("base64")
-
             if not nombre or not base64_data:
                 return {"success": False, "message": "Nombre o contenido faltante", "detalle": []}
 
             decoded = base64.b64decode(base64_data)
-
-            # Guardar archivo
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             extension = Path(nombre).suffix.lower()
             nombre_archivo = f"woq_{timestamp}{extension or '.csv'}"
             ruta = os.path.join(self.config.directorio_temp, nombre_archivo)
-
             with open(ruta, 'wb') as f:
                 f.write(decoded)
 
             from procesamiento.paso2 import procesar_woq
             df = procesar_woq(ruta)
-
             if df is None or df.empty:
                 return {"success": False, "message": "Archivo sin datos", "detalle": []}
 
-            # ✅ Asegurar ES_CERRADO → es_cerrado como SI/NO
             if "ES_CERRADO" in df.columns:
                 df["ES_CERRADO"] = df["ES_CERRADO"].map({True: "SI", False: "NO"})
                 df.rename(columns={"ES_CERRADO": "es_cerrado"}, inplace=True)
 
             detalle = df.fillna("").to_dict(orient="records")
-
-            return _json_safe({
-                "success": True,
-                "message": f"Archivo procesado: {len(detalle)} registros",
-                "detalle": detalle
-            })
+            return _json_safe({"success": True, "message": f"Archivo procesado: {len(detalle)} registros", "detalle": detalle})
 
         except Exception as e:
             logger.exception("❌ Error en procesar_archivo_woq")
             return {"success": False, "message": str(e), "detalle": []}
 
     def exportar_woq(self, datos_woq: list) -> dict:
-        """Exporta datos WOQ a Excel"""
         try:
             logger.info("✅ [exportar_woq] llamado desde frontend")
-            
             if not datos_woq or len(datos_woq) == 0:
                 return {"success": False, "message": "No hay datos para exportar"}
-            
-            # Crear DataFrame
+
             df = pd.DataFrame(datos_woq)
-            
-            # Crear nombre de archivo con timestamp
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             nombre_archivo = f"woq_exportado_{timestamp}.xlsx"
-            
-            # Usar carpeta Downloads del usuario
             carpeta_destino = os.path.join(os.path.expanduser("~"), "Downloads")
             ruta_final = os.path.join(carpeta_destino, nombre_archivo)
-            
-            # Exportar Excel
             df.to_excel(ruta_final, index=False)
-            
+
             logger.info("📊 WOQ exportado exitosamente: %s", ruta_final)
-            
-            return {
-                "success": True, 
-                "filepath": ruta_final,
-                "message": f"Archivo exportado exitosamente como: {nombre_archivo}"
-            }
-            
+            return {"success": True, "filepath": ruta_final, "message": f"Archivo exportado exitosamente como: {nombre_archivo}"}
+
         except Exception as e:
             logger.exception("❌ Error en exportar_woq")
             return {"success": False, "message": f"Error al exportar: {str(e)}"}
 
     def realizar_cruce_datos(self) -> dict:
-        """Realiza el cruce de datos entre paso1 y paso2"""
         try:
             logger.info("✅ [realizar_cruce_datos] Iniciando cruce de datos")
-            
-            # Leer datos de ambos pasos desde SQLite
             from procesamiento.db_sqlite import leer_temp_paso1, leer_temp_paso2
-            df1 = leer_temp_paso1()  # WorkOrder data
-            df2 = leer_temp_paso2()  # WOQ data
-            
+            df1 = leer_temp_paso1()
+            df2 = leer_temp_paso2()
+
             if df1.empty:
                 return {"success": False, "message": "No hay datos del Paso 1 (WorkOrder)"}
-            
             if df2.empty:
                 return {"success": False, "message": "No hay datos del Paso 2 (WOQ)"}
-            
-            logger.info(f"📊 Datos paso1: {len(df1)} registros, paso2: {len(df2)} registros")
-            
-            # ✅ Delegar al Paso 3 real (paso3.py) para mantener estructura Paso 2 + columnas nuevas
-            from procesamiento.paso3 import realizar_cruce_datos as cruce_p3
 
+            logger.info(f"📊 Datos paso1: {len(df1)} registros, paso2: {len(df2)} registros")
+            from procesamiento.paso3 import realizar_cruce_datos as cruce_p3
             datos_paso1 = df1.to_dict(orient="records")
             datos_paso2 = df2.to_dict(orient="records")
-
             resultado = cruce_p3(datos_paso1, datos_paso2)
-
-            # Retornar tal cual lo que define paso3.py, pero saneado
             return _json_safe(resultado)
-            
+
         except Exception as e:
             logger.exception("❌ Error en realizar_cruce_datos")
-            return {
-                "success": False, 
-                "message": f"Error al realizar el cruce: {str(e)}",
-                "datos_cruzados": [],
-                "estadisticas": {}
-            }
-
+            return {"success": False, "message": f"Error al realizar el cruce: {str(e)}", "datos_cruzados": [], "estadisticas": {}}
 # --------------------------------------
 # FUNCIÓN PRINCIPAL
 # --------------------------------------
@@ -740,82 +582,69 @@ def aplicar_icono_con_reintentos():
     """Aplica el ícono con múltiples reintentos."""
     max_intentos = 3
     for intento in range(1, max_intentos + 1):
-        logger.info(f"🔄 Intento {intento} de {max_intentos} para aplicar ícono")
         try:
             result = aplicar_icono_directo()
             if result:
                 logger.info(f"✅ Ícono aplicado exitosamente en intento {intento}")
                 return True
         except Exception as e:
-            print(f"❌ Error en intento {intento}: {e}")
-        
+            logger.error(f"❌ Error en intento {intento}: {e}")
+
         if intento < max_intentos:
-            import time
-            time.sleep(1)  # Esperar 1 segundo antes del siguiente intento
-    
+            time.sleep(1)
+
     logger.info("❌ No se pudo aplicar el ícono después de todos los intentos")
     return False
 
 def aplicar_icono_directo():
     """Función principal que aplica el ícono - devuelve True si tiene éxito."""
-    """Aplica un ícono personalizado a la ventana en Windows."""
     try:
         if platform.system() != "Windows":
             return False
-            
+
         if not webview.windows:
             logger.info("❌ No hay ventanas disponibles")
             return False
-            
+
         window = webview.windows[0]
         icon_path = os.path.join(STATIC_DIR, "img", "icon.ico")
-        
+
         if not os.path.exists(icon_path):
             logger.info(f"❌ No se encontró el archivo de ícono: {icon_path}")
             return False
-            
+
         logger.info(f"🔍 Intentando aplicar ícono desde: {icon_path}")
-        
-        # Para WinForms/Chromium, necesitamos acceder de manera diferente
+
         try:
-            # Método específico para WinForms
             if hasattr(window, 'gui') and window.gui:
-                # Intentar acceso directo al formulario WinForms
                 if hasattr(window.gui, 'form'):
                     form = window.gui.form
                     if form and hasattr(form, 'Icon'):
-                        # Usar System.Drawing.Icon para cargar el ícono
                         import clr
                         clr.AddReference("System.Drawing")
                         from System.Drawing import Icon
-                        
                         form.Icon = Icon(icon_path)
                         logger.info("✅ Ícono aplicado usando WinForms Icon")
                         return True
                 elif hasattr(window.gui, 'window'):
-                    # Método alternativo para obtener el handle
                     hwnd = None
                     if hasattr(window.gui.window, 'hwnd'):
                         hwnd = window.gui.window.hwnd
                     elif hasattr(window.gui.window, 'Handle'):
                         hwnd = int(window.gui.window.Handle)
-                    
+
                     if hwnd:
                         logger.info(f"🔍 Handle de ventana encontrado: {hwnd}")
-                        
-                        # Cargar íconos con tamaños específicos
                         hicon_large = ctypes.windll.user32.LoadImageW(
-                            0, icon_path, 1, 32, 32, 0x00000010  # IMAGE_ICON, LR_LOADFROMFILE
+                            0, icon_path, 1, 32, 32, 0x00000010
                         )
                         hicon_small = ctypes.windll.user32.LoadImageW(
                             0, icon_path, 1, 16, 16, 0x00000010
                         )
-                        
                         if hicon_large and hicon_small:
-                            # WM_SETICON = 0x80, ICON_BIG = 1, ICON_SMALL = 0
-                            result1 = ctypes.windll.user32.SendMessageW(hwnd, 0x80, 1, hicon_large)
-                            result2 = ctypes.windll.user32.SendMessageW(hwnd, 0x80, 0, hicon_small)
-                            logger.info(f"✅ Ícono aplicado con SendMessage. Resultados: {result1}, {result2}")
+                            ctypes.windll.user32.SendMessageW(hwnd, 0x80, 1, hicon_large)
+                            ctypes.windll.user32.SendMessageW(hwnd, 0x80, 0, hicon_small)
+                            logger.info("✅ Ícono aplicado con SendMessage")
                             return True
                         else:
                             logger.info("❌ No se pudieron cargar los íconos con LoadImage")
@@ -825,48 +654,36 @@ def aplicar_icono_directo():
                     logger.info("❌ No se encontró form o window en gui")
             else:
                 logger.info("❌ No se pudo acceder al objeto gui de la ventana")
-                
         except ImportError as e:
-            print(f"⚠️ No se pudo importar .NET Framework: {e}")
+            logger.warning(f"⚠️ No se pudo importar .NET Framework: {e}")
         except Exception as e:
-            print(f"❌ Error en método WinForms: {e}")
-            
-        # Método de respaldo usando FindWindow
+            logger.error(f"❌ Error en método WinForms: {e}")
+
         try:
             logger.info("🔍 Intentando método de respaldo con FindWindow...")
-            
-            # Buscar ventana por título
             window_title = "WOGest – Validación de Renovaciones"
             hwnd = ctypes.windll.user32.FindWindowW(None, window_title)
-            
             if hwnd:
                 logger.info(f"🔍 Ventana encontrada con FindWindow: {hwnd}")
-                
                 hicon = ctypes.windll.user32.LoadImageW(
-                    0, icon_path, 1, 0, 0, 0x00000010  # Usar tamaño por defecto
+                    0, icon_path, 1, 0, 0, 0x00000010
                 )
-                
                 if hicon:
-                    # Aplicar ícono usando SetClassLongPtr
-                    result = ctypes.windll.user32.SetClassLongPtrW(hwnd, -14, hicon)  # GCL_HICON
-                    logger.info(f"✅ Ícono aplicado con SetClassLongPtr. Resultado: {result}")
-                    
-                    # También intentar con SendMessage
+                    ctypes.windll.user32.SetClassLongPtrW(hwnd, -14, hicon)
                     ctypes.windll.user32.SendMessageW(hwnd, 0x80, 1, hicon)
                     ctypes.windll.user32.SendMessageW(hwnd, 0x80, 0, hicon)
-                    logger.info("✅ Ícono también aplicado con SendMessage")
+                    logger.info("✅ Ícono aplicado con SetClassLongPtr y SendMessage")
                     return True
                 else:
                     logger.info("❌ No se pudo cargar el ícono con LoadImage")
             else:
                 logger.info("❌ No se encontró la ventana con FindWindow")
-                
         except Exception as e:
-            print(f"❌ Error en método de respaldo: {e}")
-            
+            logger.error(f"❌ Error en método de respaldo: {e}")
+
     except Exception as e:
-        print(f"❌ Error general aplicando ícono: {e}")
-    
+        logger.error(f"❌ Error general aplicando ícono: {e}")
+
     return False
 
 def main():
@@ -879,14 +696,11 @@ def main():
     threading.Thread(target=lanzar_servidor, daemon=True).start()
     time.sleep(1.5)
 
-    # Ruta del ícono
     icon_path = os.path.join(STATIC_DIR, "img", "icon.ico")
-    
-    # Initialize database
-    print(f"[WOGest] SQLite en: {get_db_path()}")
+
+    logger.info(f"[WOGest] SQLite en: {get_db_path()}")
     init_db()
-    
-    # Crear la ventana - usar el parámetro shadow para aplicar ícono automáticamente
+
     webview.create_window(
         config.titulo,
         config.template_principal,
@@ -896,22 +710,17 @@ def main():
         confirm_close=True,
         on_top=False,
         js_api=api,
-        shadow=True  # Esto puede ayudar con la aplicación del ícono
+        shadow=True
     )
 
-    # Usar un timer para aplicar el ícono después de que la ventana esté lista
     if platform.system() == "Windows" and os.path.exists(icon_path):
         logger.info(f"📁 Ruta del ícono: {icon_path}")
-        logger.info(f"✅ Archivo de ícono encontrado: {os.path.exists(icon_path)}")
-        # Aplicar ícono con reintentos después de darle tiempo a la ventana de inicializarse
         timer = threading.Timer(2.5, aplicar_icono_con_reintentos)
         timer.start()
     else:
         logger.info("⚠️ No se aplicará ícono: Sistema no Windows o archivo no encontrado")
 
-    # Iniciar webview
     webview.start(debug=True, gui='edgechromium')
-
 
 if __name__ == "__main__":
     main()
