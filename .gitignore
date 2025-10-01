@@ -21,3 +21,5 @@ logs/
 Thumbs.db
 # Archivos temporales dentro de datos
 datos/temp/
+# Carpeta temporal de datos
+datos/temp/
