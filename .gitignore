@@ -1,25 +1,174 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-# Entorno virtual
+# ===== ENTORNOS VIRTUALES =====
+# Virtual environments
 venv/
+env/
+ENV/
+.venv/
+.env/
+venv*/
+env*/
 
-# Archivos de Python
+# ===== ARCHIVOS DE PYTHON =====
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
+*.pyd
 
-# Archivos de logs y salidas
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# ===== ARCHIVOS DE LOGS Y TEMPORALES =====
+# Logs
 *.log
-output/GIR
 logs/
+log/
 
-# Configuración de IDEs
+# Output y builds
+output/
+build/
+dist/
+
+# Archivos temporales
+datos/temp/
+datos/exports/*.xlsx
+datos/exports/*.csv
+*.tmp
+*.temp
+temp/
+
+# ===== BASES DE DATOS Y CONFIGURACIÓN =====
+# SQLite databases (excluir solo las temporales o con datos sensibles)
+# La base de datos principal del proyecto (combinaciones.db) se incluirá
+temp*.db
+cache*.db
+session*.db
+user_data*.db
+*.db.tmp
+*.sqlite.tmp
+*.sqlite3.tmp
+
+# Archivos de configuración sensibles
+.env
+.env.local
+.env.*.local
+config.ini
+settings.ini
+
+# ===== IDEs Y EDITORES =====
+# Visual Studio Code
 .vscode/
-.idea/
+*.code-workspace
 
-# Archivos del sistema
-.DS_Store
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ===== SISTEMA OPERATIVO =====
+# Windows
 Thumbs.db
-# Archivos temporales dentro de datos
-datos/temp/
-# Carpeta temporal de datos
-datos/temp/
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===== ARCHIVOS ESPECÍFICOS DEL PROYECTO =====
+# Archivos de Excel temporales
+~$*.xlsx
+~$*.xls
+*.xlsx.tmp
+
+# Archivos JSON temporales
+*.json.tmp
+estado_paso*.json
+
+# Archivos comprimidos
+*.rar
+*.zip
+*.7z
+*.tar.gz
+
+# ===== DEPENDENCIAS Y MÓDULOS =====
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
